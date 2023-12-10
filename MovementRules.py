@@ -144,46 +144,51 @@ class MovementRules:
     @classmethod
     def get_castling_moves(cls, position, can_castle, is_white, piece_type, pieces):
         moves = 0
-        if not can_castle:
+        short_castle, long_castle = can_castle
+        if not (short_castle or long_castle):
             return moves
 
         if piece_type == Pieces.KING:
-            moves |= cls.get_king_castling_moves(position, is_white, pieces)
+            moves |= cls.get_king_castling_moves(position, is_white, short_castle, long_castle, pieces)
         elif piece_type == Pieces.ROOK:
-            moves |= cls.get_rook_castling_moves(position, is_white, pieces)
+            moves |= cls.get_rook_castling_moves(position, is_white, short_castle, long_castle, pieces)
 
         return moves
 
     @classmethod
-    def get_king_castling_moves(cls, position, is_white, pieces):
+    def get_king_castling_moves(cls, position, is_white, short_castle, long_castle, pieces):
         moves = 0
         dx = [i for i in range(1, 4)]
-        if not any(cls.is_occupied(position + offset, pieces) for offset in dx[:2]):
-            rook = cls.is_occupied(position + 3, pieces)
-            if rook is not None and rook.get_piece_type() == Pieces.ROOK and rook.is_white() == is_white:
-                moves |= 1 << (position + 3)
-        if not any(cls.is_occupied(position - offset, pieces) for offset in dx):
-            rook = cls.is_occupied(position - 4, pieces)
-            if rook is not None and rook.get_piece_type() == Pieces.ROOK and rook.is_white() == is_white:
-                moves |= 1 << (position - 4)
+        if short_castle:
+            if not any(cls.is_occupied(position + offset, pieces) for offset in dx[:2]):
+                rook = cls.is_occupied(position + 3, pieces)
+                if rook is not None and rook.get_piece_type() == Pieces.ROOK and rook.is_white() == is_white:
+                    moves |= 1 << (position + 3)
+        if long_castle:
+            if not any(cls.is_occupied(position - offset, pieces) for offset in dx):
+                rook = cls.is_occupied(position - 4, pieces)
+                if rook is not None and rook.get_piece_type() == Pieces.ROOK and rook.is_white() == is_white:
+                    moves |= 1 << (position - 4)
         return moves
 
     @classmethod
-    def get_rook_castling_moves(cls, position, is_white, pieces):
+    def get_rook_castling_moves(cls, position, is_white, short_castle, long_castle, pieces):
         moves = 0
-        direction = 1 if cls.get_file(position) == 0 else -1
+        direction = 1 if cls.get_file(position) == 0 else -1 if cls.get_file(position) == 7 else 0
         dx = [position + direction * i for i in range(1, 4)]
 
         if direction == 1:
-            if not any(cls.is_occupied(pos, pieces) for pos in dx):
-                king = cls.is_occupied(position + 4, pieces)
-                if king is not None and king.get_piece_type() == Pieces.KING and king.is_white() == is_white:
-                    moves |= 1 << (position + 4)
-        else:
-            if not any(cls.is_occupied(pos, pieces) for pos in dx[:-1]):
-                king = cls.is_occupied(position - 3, pieces)
-                if king is not None and king.get_piece_type() == Pieces.KING and king.is_white() == is_white:
-                    moves |= 1 << (position - 3)
+            if long_castle:
+                if not any(cls.is_occupied(pos, pieces) for pos in dx):
+                    king = cls.is_occupied(position + 4, pieces)
+                    if king is not None and king.get_piece_type() == Pieces.KING and king.is_white() == is_white:
+                        moves |= 1 << (position + 4)
+        elif direction == -1:
+            if short_castle:
+                if not any(cls.is_occupied(pos, pieces) for pos in dx[:-1]):
+                    king = cls.is_occupied(position - 3, pieces)
+                    if king is not None and king.get_piece_type() == Pieces.KING and king.is_white() == is_white:
+                        moves |= 1 << (position - 3)
         return moves
 
     @classmethod
@@ -296,20 +301,20 @@ class MovementRules:
 
     @classmethod
     def is_checkmate(cls, king, pieces, last_move, can_castle):
-        if not cls.is_check(king, pieces, last_move, can_castle):
+        if not cls.is_check(king, pieces, last_move, (False, False)):
             return False
         for piece in pieces:
             if piece.is_white() == king.is_white():
                 positions = MovementRules.get_positions(piece.get_board())
                 for position in positions:
-                    moves = MovementRules.get_moves(piece, position, pieces, last_move, can_castle)
+                    moves = MovementRules.get_moves(piece, position, pieces, last_move, (False, False))
                     piece.clear_square(position)
                     for move in cls.get_set_bits(moves):
                         opponent = cls.is_occupied_opponent(move, king.is_white(), pieces)
                         if opponent:
                             opponent.clear_square(move)
                         piece.occupy_square(move)
-                        if not cls.is_check(king, pieces, last_move, can_castle):
+                        if not cls.is_check(king, pieces, last_move, (False, False)):
                             piece.clear_square(move)
                             piece.occupy_square(position)
                             if opponent:

@@ -1,9 +1,12 @@
 import math
+import time
+
 import pygame
 import sys
 
 from BitBoard import BitBoard
 from MovementRules import MovementRules
+from Hashing import Hashing
 from Pieces import Pieces
 from PromotionPopup import PromotionPopup
 
@@ -38,8 +41,9 @@ class ChessGUI:
         self.selected = None
         self.is_white_turn = True
         self.last_move = None
-        self.white_can_castle = True
-        self.black_can_castle = True
+        self.white_can_castle = (True, True)  # (short_castle, long_castle)
+        self.black_can_castle = (True, True)  # (short_castle, long_castle)
+        self.Hash = Hashing(self.pieces)
 
     @staticmethod
     def coordinates_to_position(coordinates):
@@ -131,9 +135,11 @@ class ChessGUI:
 
         if not MovementRules.is_valid_position(clicked_position):
             return
-        if (self.is_white_turn and clicked_piece == self.bk) or (not self.is_white_turn and clicked_piece == self.wk):
-            print("Can't move enemy king.")
-            return
+        # if self.selected is None and clicked_piece is not None:
+        #     if (self.is_white_turn and not clicked_piece.is_white()) or \
+        #             (not self.is_white_turn and clicked_piece.is_white()):
+        #         print("Can't move enemy piece.")
+        #         return
 
         if self.is_white_turn:
             self.handle_white_turn(clicked_piece, clicked_position)
@@ -146,11 +152,11 @@ class ChessGUI:
             self.handle_second_click(clicked_piece, clicked_position)
         elif clicked_piece:
             self.selected = clicked_piece, clicked_position
-            can_castle = self.white_can_castle if self.selected[0].is_white() else self.black_can_castle
-            moves = MovementRules.get_moves(self.selected[0], self.selected[1], self.pieces, self.last_move, can_castle)
+            short_castle, long_castle = self.white_can_castle if self.selected[0].is_white() else self.black_can_castle
+            moves = MovementRules.get_moves(self.selected[0], self.selected[1], self.pieces, self.last_move, (short_castle, long_castle))
             king = self.wk if self.is_white_turn else self.bk
             moves = MovementRules.remove_check_moves(self.selected[0], self.selected[1], moves, king, self.pieces,
-                                                     self.last_move, can_castle)
+                                                     self.last_move, (short_castle, long_castle))
             self.draw_board(moves)
 
     def handle_second_click(self, clicked_piece, clicked_position):
@@ -173,6 +179,7 @@ class ChessGUI:
         self.draw_board(moves)
 
     def move_piece(self, piece_to_move, clicked_position):
+        start = time.time()
         can_castle = self.white_can_castle if piece_to_move[0].is_white() else self.black_can_castle
         moves = MovementRules.get_moves(piece_to_move[0], piece_to_move[1], self.pieces, self.last_move, can_castle)
         king = self.wk if self.is_white_turn else self.bk
@@ -193,23 +200,29 @@ class ChessGUI:
             if self.handle_castling_moves(piece_to_move[0], piece_to_move[1], clicked_position):
                 return True
 
-        self.update_can_castle(piece_to_move[0])
+        self.update_can_castle(piece_to_move[0], piece_to_move[1])
         self.handle_last_move(piece_to_move[0], piece_to_move[1], clicked_position, opponent_piece)
 
-        if MovementRules.is_checkmate(self.wk, self.pieces, self.last_move, self.white_can_castle):
+        if MovementRules.is_checkmate(self.wk, self.pieces, self.last_move, (False, False)):
             print("Black won!")
             pygame.quit()
             sys.exit()
-        elif MovementRules.is_checkmate(self.bk, self.pieces, self.last_move, self.black_can_castle):
+        elif MovementRules.is_checkmate(self.bk, self.pieces, self.last_move, (False, False)):
             print("White won!")
             pygame.quit()
             sys.exit()
 
         if MovementRules.is_stalemate(self.bk if self.is_white_turn else self.wk, self.pieces, self.last_move,
-                                      self.white_can_castle if self.is_white_turn else self.black_can_castle):
+                                      (False, False)):
             print("Stalemate.")
             pygame.quit()
             sys.exit()
+        opp_piece_type = opponent_piece.get_piece_type() if opponent_piece is not None else None
+        self.Hash.update_hash_after_move((piece_to_move[1], clicked_position, piece_to_move[0].get_piece_type()),
+                                         (opp_piece_type, clicked_position))
+        print(self.Hash.hash_value)
+        end = time.time()
+        print(end - start)
         return True
 
     @staticmethod
@@ -242,9 +255,9 @@ class ChessGUI:
 
     def perform_castling(self, piece, current_position, next_position):
         if piece.is_white():
-            self.white_can_castle = False
+            self.white_can_castle = False, False
         else:
-            self.black_can_castle = False
+            self.black_can_castle = False, False
         if piece.get_piece_type() == Pieces.ROOK:
             rook_dx = 3 if current_position < next_position else -2
             king_dx = -2 if current_position < next_position else 2
@@ -266,7 +279,7 @@ class ChessGUI:
         return True
 
     def handle_last_move(self, piece, current_position, clicked_position, opponent_piece):
-        self.update_can_castle(piece)
+        self.update_can_castle(piece, current_position)
         piece.clear_square(current_position)
         piece.occupy_square(clicked_position)
 
@@ -275,15 +288,23 @@ class ChessGUI:
 
         self.last_move = (piece, current_position, clicked_position, opponent_piece)
 
-    def update_can_castle(self, piece):
+    def update_can_castle(self, piece, position):
         if self.white_can_castle:
-            if (piece.is_white() and piece.get_piece_type() == Pieces.KING) or \
-                    (piece.is_white() and piece.get_piece_type() == Pieces.ROOK):
-                self.white_can_castle = False
+            if piece.is_white() and piece.get_piece_type() == Pieces.KING:
+                self.white_can_castle = False, False
+            elif piece.is_white() and piece.get_piece_type() == Pieces.ROOK:
+                if MovementRules.get_file(position) == 0:
+                    self.white_can_castle = self.white_can_castle[0], False
+                elif MovementRules.get_file(position) == 7:
+                    self.white_can_castle = False, self.white_can_castle[1]
         if self.black_can_castle:
-            if (not piece.is_white() and piece.get_piece_type() == Pieces.KING) or \
-                    (not piece.is_white() and piece.get_piece_type() == Pieces.ROOK):
-                self.black_can_castle = False
+            if not piece.is_white() and piece.get_piece_type() == Pieces.KING:
+                self.white_can_castle = False, False
+            elif not piece.is_white() and piece.get_piece_type() == Pieces.ROOK:
+                if MovementRules.get_file(position) == 0:
+                    self.black_can_castle = self.black_can_castle[0], False
+                elif MovementRules.get_file(position) == 7:
+                    self.black_can_castle = False, self.black_can_castle[1]
 
     def promote_pawn(self, bitboard, position):
         bitboard.clear_square(position)
@@ -309,8 +330,6 @@ class ChessGUI:
         for piece in self.pieces:
             if piece.get_piece_type() == promotion_choice and piece.is_white() == is_white:
                 piece.occupy_square(position)
-
-
 
 
 if __name__ == "__main__":
