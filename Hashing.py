@@ -7,9 +7,10 @@ class Hashing:
 
     def __init__(self, pieces):
         self.zobrist_table, self.black_move_bitstring = self.initialize_zobrist()
-        self.game_states = {}
         self.is_black_turn = False
         self.hash_value = self.initialize_hash(pieces)
+        self.game_states = {self.hash_value: 1}
+
 
     @staticmethod
     def initialize_zobrist():
@@ -26,6 +27,8 @@ class Hashing:
 
         if self.is_black_turn:
             hash_value ^= self.black_move_bitstring
+
+        self.is_black_turn = not self.is_black_turn
 
         return hash_value
 
@@ -44,12 +47,20 @@ class Hashing:
         if captured_piece_idx != -1:
             hash_value ^= self.zobrist_table[captured_square][captured_piece_idx]
 
-        if self.is_black_turn:
-            hash_value ^= self.black_move_bitstring
+        # if self.is_black_turn:
+        #     hash_value ^= self.black_move_bitstring
 
         self.is_black_turn = not self.is_black_turn
 
         self.hash_value = hash_value
+
+        if self.hash_value in self.game_states:
+            self.game_states[self.hash_value] += 1
+        else:
+            self.game_states[self.hash_value] = 1
+
+    def three_move_repetition(self):
+        return any(value >= 3 for value in self.game_states.values())
 
     @staticmethod
     def piece_to_index(piece):

@@ -1,5 +1,4 @@
 import math
-import time
 
 import pygame
 import sys
@@ -179,7 +178,6 @@ class ChessGUI:
         self.draw_board(moves)
 
     def move_piece(self, piece_to_move, clicked_position):
-        start = time.time()
         can_castle = self.white_can_castle if piece_to_move[0].is_white() else self.black_can_castle
         moves = MovementRules.get_moves(piece_to_move[0], piece_to_move[1], self.pieces, self.last_move, can_castle)
         king = self.wk if self.is_white_turn else self.bk
@@ -220,9 +218,12 @@ class ChessGUI:
         opp_piece_type = opponent_piece.get_piece_type() if opponent_piece is not None else None
         self.Hash.update_hash_after_move((piece_to_move[1], clicked_position, piece_to_move[0].get_piece_type()),
                                          (opp_piece_type, clicked_position))
-        print(self.Hash.hash_value)
-        end = time.time()
-        print(end - start)
+
+        if self.Hash.three_move_repetition():
+            print("Draw - three move repetition.")
+            pygame.quit()
+            sys.exit()
+
         return True
 
     @staticmethod
