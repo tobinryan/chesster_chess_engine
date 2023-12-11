@@ -682,7 +682,7 @@ class ChessGUI:
         """
         for piece in self.pieces:
             # Find the corresponding piece for the promotion choice and color
-            if piece.get_piece_type() == promotion_choice and piece.is_white() == is_white:
+            if piece == promotion_choice and piece.is_white() == is_white:
                 # Occupy the promotion square with the chosen piece
                 piece.occupy_square(square)
 
