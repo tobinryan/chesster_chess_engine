@@ -225,7 +225,7 @@ class ChessGUI:
             sys.exit()
 
         elif MovementRules.is_stalemate(self.bk if self.is_white_turn else self.wk, self.pieces, self.last_move,
-                                      (False, False)):
+                                        (False, False)):
             print("Stalemate.")
             pygame.quit()
             sys.exit()
@@ -237,12 +237,49 @@ class ChessGUI:
             print("Draw - fifty move rule.")
             pygame.quit()
             sys.exit()
+        elif self.is_insufficient_material():
+            print("Draw - insufficient material.")
+            pygame.quit()
+            sys.exit()
 
     @staticmethod
     def is_valid_move(position, moves):
         if not (1 << position) & moves:
             return False
         return True
+
+    def is_insufficient_material(self):  # king, bishop
+        if self.wp.get_board() != 0 or self.bp.get_board() != 0 or \
+                self.wq.get_board() != 0 or self.bq.get_board() != 0 or \
+                self.wr.get_board() != 0 or self.br.get_board() != 0:
+            return False
+        if self.wb.get_board() == 0 and self.bb.get_board() == 0 and \
+                self.wkn.get_board() == 0 and self.bkn.get_board() == 0:
+            print("king V king")
+            return True
+        if self.wkn.get_board() == 0 and self.bkn.get_board() == 0 and \
+                (self.wb.get_board() == 0 or self.bb.get_board() == 0) and \
+                (len(MovementRules.get_set_bits(self.wb.get_board())) == 1 or
+                 len(MovementRules.get_set_bits(self.bb.get_board()) == 1)):
+            print("king and bishop vs king")
+            return True
+        if self.wb.get_board() == 0 and self.bb.get_board() == 0 and \
+                (self.wkn.get_board() == 0 or self.bkn.get_board() == 0) and \
+                (len(MovementRules.get_positions(self.wkn.get_board())) == 1 or
+                 len(MovementRules.get_positions(self.bkn.get_board())) == 1):
+            print("king and knight vs king")
+            return True
+        if self.wkn.get_board() == 0 and self.bkn.get_board() == 0 and \
+                len(MovementRules.get_set_bits(self.wb.get_board())) == 1 and \
+                len(MovementRules.get_set_bits(self.bb.get_board())) == 1 and \
+                self.get_square_color(MovementRules.get_positions(self.wb.get_board())[0]) == \
+                self.get_square_color(MovementRules.get_positions(self.bb.get_board())[0]):
+            print("king and bishop vs king and bishop")
+            return True
+        return False
+
+    def get_square_color(self, position): # true = dark, false = light
+        return (MovementRules.get_file(position) + MovementRules.get_rank(position)) % 2 == 0
 
     @staticmethod
     def handle_opponent_piece(piece, position):
