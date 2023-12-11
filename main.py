@@ -40,6 +40,7 @@ class ChessGUI:
         self.selected = None
         self.is_white_turn = True
         self.last_move = None
+        self.fifty_move_count = 0
         self.white_can_castle = (True, True)  # (short_castle, long_castle)
         self.black_can_castle = (True, True)  # (short_castle, long_castle)
         self.Hash = Hashing(self.pieces)
@@ -152,7 +153,8 @@ class ChessGUI:
         elif clicked_piece:
             self.selected = clicked_piece, clicked_position
             short_castle, long_castle = self.white_can_castle if self.selected[0].is_white() else self.black_can_castle
-            moves = MovementRules.get_moves(self.selected[0], self.selected[1], self.pieces, self.last_move, (short_castle, long_castle))
+            moves = MovementRules.get_moves(self.selected[0], self.selected[1], self.pieces, self.last_move,
+                                            (short_castle, long_castle))
             king = self.wk if self.is_white_turn else self.bk
             moves = MovementRules.remove_check_moves(self.selected[0], self.selected[1], moves, king, self.pieces,
                                                      self.last_move, (short_castle, long_castle))
@@ -196,11 +198,23 @@ class ChessGUI:
             self.handle_pawn_moves(piece_to_move[1], piece_to_move[0].is_white(), clicked_position)
         elif piece_to_move[0].get_piece_type() in {Pieces.KING, Pieces.ROOK}:
             if self.handle_castling_moves(piece_to_move[0], piece_to_move[1], clicked_position):
+                self.fifty_move_count += 1
                 return True
 
+        self.fifty_move_count += 1
+        self.handle_game_state_endings()
         self.update_can_castle(piece_to_move[0], piece_to_move[1])
         self.handle_last_move(piece_to_move[0], piece_to_move[1], clicked_position, opponent_piece)
+        if opponent_piece or piece_to_move[0].get_piece_type() == Pieces.PAWN:
+            self.fifty_move_count = 0
 
+        opp_piece_type = opponent_piece.get_piece_type() if opponent_piece is not None else None
+        self.Hash.update_hash_after_move((piece_to_move[1], clicked_position, piece_to_move[0].get_piece_type()),
+                                         (opp_piece_type, clicked_position))
+
+        return True
+
+    def handle_game_state_endings(self):
         if MovementRules.is_checkmate(self.wk, self.pieces, self.last_move, (False, False)):
             print("Black won!")
             pygame.quit()
@@ -210,21 +224,19 @@ class ChessGUI:
             pygame.quit()
             sys.exit()
 
-        if MovementRules.is_stalemate(self.bk if self.is_white_turn else self.wk, self.pieces, self.last_move,
+        elif MovementRules.is_stalemate(self.bk if self.is_white_turn else self.wk, self.pieces, self.last_move,
                                       (False, False)):
             print("Stalemate.")
             pygame.quit()
             sys.exit()
-        opp_piece_type = opponent_piece.get_piece_type() if opponent_piece is not None else None
-        self.Hash.update_hash_after_move((piece_to_move[1], clicked_position, piece_to_move[0].get_piece_type()),
-                                         (opp_piece_type, clicked_position))
-
-        if self.Hash.three_move_repetition():
+        elif self.Hash.three_move_repetition():
             print("Draw - three move repetition.")
             pygame.quit()
             sys.exit()
-
-        return True
+        elif self.fifty_move_count >= 100:
+            print("Draw - fifty move rule.")
+            pygame.quit()
+            sys.exit()
 
     @staticmethod
     def is_valid_move(position, moves):
