@@ -1,6 +1,3 @@
-import pygame
-
-
 class BitBoard:
     """
     Represents a bitboard for a type of chess piece (e.g., white pawns, black bishops).
