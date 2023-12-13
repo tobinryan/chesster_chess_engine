@@ -10,6 +10,7 @@ from PromotionPopup import PromotionPopup
 
 
 class ChessGUI:
+
     WIDTH, HEIGHT, SQUARE_SIZE = 800, 800, 100
     FPS = 60
     HIGHLIGHT_COLOR = (224, 244, 64, 100)
@@ -295,9 +296,9 @@ class ChessGUI:
 
         # Update game state, including handling game-ending conditions
         self.fifty_move_count += 1
-        self.handle_game_state_endings()
         self.update_can_castle(piece_to_move[0], piece_to_move[1])
         self.finalize_move(piece_to_move[0], piece_to_move[1], dest_square, opponent_piece)
+        self.handle_game_state_endings()
 
         # Reset fifty-move count if a capture or pawn move occurs
         if opponent_piece or piece_to_move[0].get_piece_type() == Pieces.PAWN:
