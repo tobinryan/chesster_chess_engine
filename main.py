@@ -53,17 +53,15 @@ class ChessGUI:
     bk = BitBoard(0b00010000 << 56, pygame.image.load('images/bk.png'), False, Pieces.KING)  # Black King
     pieces = [wp, bp, wr, br, wkn, bkn, wb, bb, wq, bq, wk, bk]
 
-    occupied = 0xffff_0000_0000_ffff
-
     def __init__(self):
         pygame.init()
         pygame.mixer.init()
         self.screen = pygame.display.set_mode((self.WIDTH, self.HEIGHT))
         pygame.display.set_caption("Chester the Chess Engine")
         self.clock = pygame.time.Clock()
-        self.selected = None  # Tuple (selected_bitboard, position)
+        self.selected: (BitBoard, int) = None  # Tuple (selected_bitboard, position)
         self.is_white_turn = True
-        self.last_move = None  # Tuple (piece, start_square, dest_square, opponent_piece)
+        self.last_move = None
         self.half_move_count = 0
         self.white_can_castle = (True, True)  # Tuple (short_castle, long_castle)
         self.black_can_castle = (True, True)  # Tuple (short_castle, long_castle)
@@ -228,7 +226,7 @@ class ChessGUI:
         # Handle the turn based on the selected piece and clicked square (source or destination)
         self.handle_turn(clicked_piece, clicked_square)
 
-    def handle_turn(self, clicked_piece, clicked_square):
+    def handle_turn(self, clicked_piece, clicked_square: Square):
         """
         Handles a player's turn in the chess game.
 
@@ -256,7 +254,7 @@ class ChessGUI:
                                                      self.last_move, (short_castle, long_castle))
             self.draw_board(moves)
 
-    def handle_second_click(self, clicked_piece, clicked_square):
+    def handle_second_click(self, clicked_piece: BitBoard, clicked_square: Square):
         """
         Handles the click (after selecting a piece) during a player's turn.
 
@@ -270,7 +268,7 @@ class ChessGUI:
         if self.move_piece(self.selected, clicked_square):
             # If the move is successful, toggle the turn and reset the selected piece
             self.is_white_turn = not self.is_white_turn
-            print(self.move_notation(Move(self.selected[1], clicked_square, self.selected[0].get_piece_type())))
+            print(self.move_notation())
             self.selected = None
             moves = None
         elif self.square_to_piece(clicked_square) and not MovementRules.is_occupied_opponent(
@@ -279,8 +277,8 @@ class ChessGUI:
             self.selected = clicked_piece, clicked_square
             can_castle = self.white_can_castle if clicked_piece.is_white() else self.black_can_castle
             king = self.wk if self.is_white_turn else self.bk
-            moves = MovementRules.get_moves(self.selected[0], self.selected[1], self.pieces, self.last_move, can_castle)
-            moves = MovementRules.remove_check_moves(self.selected[0], self.selected[1], moves, king, self.pieces,
+            moves = MovementRules.get_moves(clicked_piece, clicked_square, self.pieces, self.last_move, can_castle)
+            moves = MovementRules.remove_check_moves(clicked_piece, clicked_square, moves, king, self.pieces,
                                                      self.last_move, can_castle)
         else:
             # If the same piece is clicked a second time, unhighlight the piece and moves
@@ -290,7 +288,7 @@ class ChessGUI:
         # Update the displayed board based on the updated game state
         self.draw_board(moves)
 
-    def move_piece(self, piece_to_move, dest_square):
+    def move_piece(self, piece_to_move: (BitBoard, Square), dest_square: Square) -> bool:
         """
         Moves a chess piece to the specified destination square.
 
@@ -305,13 +303,13 @@ class ChessGUI:
         handles specific piece movements (e.g., en passant, pawn promotion, castling),
         and updates game-related parameters.
         """
-
-        can_castle = self.white_can_castle if piece_to_move[0].is_white() else self.black_can_castle
+        piece, start_square = piece_to_move
+        can_castle = self.white_can_castle if piece.is_white() else self.black_can_castle
 
         # Get all possible moves for the piece and remove any that result in check
-        moves = MovementRules.get_moves(piece_to_move[0], piece_to_move[1], self.pieces, self.last_move, can_castle)
+        moves = MovementRules.get_moves(piece, start_square, self.pieces, self.last_move, can_castle)
         king = self.wk if self.is_white_turn else self.bk
-        moves = MovementRules.remove_check_moves(piece_to_move[0], piece_to_move[1], moves, king, self.pieces,
+        moves = MovementRules.remove_check_moves(piece, start_square, moves, king, self.pieces,
                                                  self.last_move, can_castle)
 
         # Check if the destination square is a valid move
@@ -320,31 +318,33 @@ class ChessGUI:
             return False
 
         # Handle opponent piece if present on the destination square
-        opponent_piece = MovementRules.is_occupied_opponent(dest_square, piece_to_move[0].is_white(),
+        opponent_piece = MovementRules.is_occupied_opponent(dest_square, piece.is_white(),
                                                             self.pieces)
-        self.handle_opponent_piece(opponent_piece, dest_square)
+        is_capture = self.handle_opponent_piece(opponent_piece, dest_square)
+        en_passant = False
 
         # Handle specific piece movements (e.g. en passant, castling)
-        if piece_to_move[0].get_piece_type() == Pieces.PAWN:
-            self.handle_en_passant(piece_to_move[1], piece_to_move[0].is_white(), dest_square)
-        elif piece_to_move[0].get_piece_type() in {Pieces.KING, Pieces.ROOK}:
-            if self.handle_castling_moves(piece_to_move[0], piece_to_move[1], dest_square):
+        if piece.get_piece_type() == Pieces.PAWN:
+            en_passant = self.handle_en_passant(start_square, piece.is_white(), dest_square)
+        elif piece.get_piece_type() in {Pieces.KING, Pieces.ROOK}:
+            if self.handle_castling_moves(piece, start_square, dest_square):
                 self.half_move_count += 1
                 pygame.mixer.Sound.play(self.castle_sound)
                 return True
 
         # Update game state, including handling game-ending conditions
         self.half_move_count += 1
-        self.update_can_castle(piece_to_move[0], piece_to_move[1])
-        self.finalize_move(piece_to_move[0], piece_to_move[1], dest_square, opponent_piece)
+        self.update_can_castle(piece, start_square)
+        move = Move(start_square, dest_square, piece.get_piece_type(), is_capture, en_passant)
+        self.finalize_move(piece, move)
         self.handle_game_state_endings()
 
         # Reset half-move count if a capture or pawn move occurs
-        if opponent_piece or piece_to_move[0].get_piece_type() == Pieces.PAWN:
+        if opponent_piece or piece.get_piece_type() == Pieces.PAWN:
             self.half_move_count = 0
 
         # Update the hash value of the current game state after the move
-        self.Hash.update_hash_after_move((piece_to_move[1], dest_square, piece_to_move[0].get_piece_type()),
+        self.Hash.update_hash_after_move((start_square, dest_square, piece.get_piece_type()),
                                          (opponent_piece.get_piece_type() if opponent_piece else None, dest_square))
 
         pygame.mixer.Sound.play(self.move_sound)
@@ -488,7 +488,7 @@ class ChessGUI:
         """
         return (MovementRules.get_file(position) + MovementRules.get_rank(position)) % 2 == 0
 
-    def handle_opponent_piece(self, piece, position):
+    def handle_opponent_piece(self, piece, position) -> bool:
         """
         Handles the removal of an opponent's piece from the board.
 
@@ -496,14 +496,17 @@ class ChessGUI:
         - piece: The opponent's piece to be removed.
         - position: The index of the square where the opponent's piece is located.
 
-        This method clears the square on the board occupied by the opponent's piece.
+        This method clears the square on the board occupied by the opponent's piece and returns true
+        if a piece was captured and false otherwise.
         """
         if piece:
             print("Took opponent piece {}.".format(piece.get_piece_type()))
             piece.clear_square(position)
             pygame.mixer.Sound.play(self.capture_sound)
+            return True
+        return False
 
-    def handle_en_passant(self, start_square, is_white, dest_square):
+    def handle_en_passant(self, start_square, is_white, dest_square) -> bool:
         """
         Handles en passant captures.
 
@@ -512,7 +515,8 @@ class ChessGUI:
         - is_white: True if the pawn is white, False if black.
         - dest_square: The index of the destination square of the pawn.
 
-        This method checks for en passant captures and removes the captured opponent's pawn.
+        This method checks for en passant captures and removes the captured opponent's pawn and returns True if
+        an en passant capture was made and False otherise.
         """
 
         # Get en passant moves for the current pawn
@@ -529,6 +533,8 @@ class ChessGUI:
                 opponent_piece.clear_square(opponent_position)
             else:
                 raise Exception("Completed en passant move but couldn't find opponent piece.")
+            return True
+        return False
 
     def handle_castling_moves(self, piece, start_square, dest_square):
         """
@@ -609,7 +615,7 @@ class ChessGUI:
 
         return True
 
-    def finalize_move(self, piece, start_square, dest_square, opponent_piece):
+    def finalize_move(self, piece, move: Move):
         """
         Finalizes a chess move by updating castling flags, moving pieces,
         checking for pawn promotion, and storing information about the move.
@@ -626,19 +632,19 @@ class ChessGUI:
         """
 
         # Update castling flags
-        self.update_can_castle(piece, start_square)
+        self.update_can_castle(piece, move.start_square)
 
         # Clear the current square and occupy the destination square with the piece
-        piece.clear_square(start_square)
-        piece.occupy_square(dest_square)
+        piece.clear_square(move.start_square)
+        piece.occupy_square(move.end_square)
 
         # Check for pawn promotion
-        if MovementRules.pawn_reached_end(piece, dest_square):
-            # pygame.mixer.Sound.play(self.promote_sound)
-            self.promote_pawn(piece, dest_square)
+        if MovementRules.pawn_reached_end(piece, move.end_square):
+            pygame.mixer.Sound.play(self.promote_sound)
+            self.promote_pawn(piece, move.end_square)
 
         # Store information about the last move
-        self.last_move = (piece, start_square, dest_square, opponent_piece)
+        self.last_move = move
 
     def update_can_castle(self, piece, square):
         """
@@ -732,10 +738,17 @@ class ChessGUI:
         """Gets the name of the square, like ``a3``."""
         return self.SQUARE_NAMES[square]
 
-    def move_notation(self, move: Move):
-        piece = self.PIECE_SYMBOLS[move.piece_type]
+    def move_notation(self):
+        move = ""
+        piece = self.PIECE_SYMBOLS[self.last_move.piece_type]
         piece = self.UNICODE_PIECE_SYMBOLS[piece.upper() if self.is_white_turn else piece]
-        return piece + self.square_name(move.end_square)
+        move += piece
+        if self.last_move.is_capture and self.last_move.piece_type == Pieces.PAWN or self.last_move.en_passant:
+            move += self.FILE_NAMES[MovementRules.get_file(self.last_move.start_square)] + "x"
+        elif self.last_move.is_capture:
+            move += "x"
+        move += self.square_name(self.last_move.end_square)
+        return move
 
 
 if __name__ == "__main__":

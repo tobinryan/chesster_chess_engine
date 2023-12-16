@@ -8,7 +8,7 @@ from Move import Move
 class MovementRules:
 
     @staticmethod
-    def get_all_moves(bitboard, pieces, last_move, can_castle) -> List[Move]:
+    def get_all_moves(bitboard: BitBoard, pieces, last_move: Move, can_castle) -> List[Move]:
         moves = []
         positions = MovementRules.get_positions(bitboard.get_board())
         for position in positions:
@@ -16,7 +16,7 @@ class MovementRules:
         return moves
 
     @staticmethod
-    def get_moves(bitboard, position, pieces, last_move, can_castle) -> List[Move]:
+    def get_moves(bitboard: BitBoard, position, pieces, last_move: Move, can_castle) -> List[Move]:
         if bitboard.get_piece_type() == Pieces.PAWN:
             return MovementRules.get_pawn_moves(position, bitboard.is_white(), pieces, last_move)
         elif bitboard.get_piece_type() == Pieces.KNIGHT:
@@ -31,7 +31,7 @@ class MovementRules:
             return MovementRules.get_king_moves(position, bitboard.is_white(), pieces, can_castle)
 
     @classmethod
-    def get_pawn_moves(cls, position, is_white, pieces, last_move) -> List[Move]:
+    def get_pawn_moves(cls, position, is_white, pieces, last_move: Move) -> List[Move]:
         moves = []
         direction = 1 if is_white else -1
 
@@ -67,7 +67,7 @@ class MovementRules:
         return moves
 
     @classmethod
-    def get_en_passant(cls, position, is_white, pieces, last_move) -> List[Move]:
+    def get_en_passant(cls, position, is_white, pieces, last_move: Move) -> List[Move]:
         opponent_rank = 6 if is_white else 1
         my_rank = 4 if is_white else 3
         moves = []
@@ -75,14 +75,14 @@ class MovementRules:
                                                                                                          is_white,
                                                                                                          pieces):
             if cls.is_occupied_opponent(position - 1, is_white, pieces).get_piece_type() == Pieces.PAWN:
-                if last_move[2] == position - 1 and cls.get_rank(last_move[1]) == opponent_rank:
+                if last_move.end_square == position - 1 and cls.get_rank(last_move.start_square) == opponent_rank:
                     if is_white:
                         moves.append(Move(position, position + 7, Pieces.PAWN, True, True))
                     else:
                         moves.append(Move(position, position - 9, Pieces.PAWN, True, True))
         if cls.get_file(position) < 7 and cls.is_occupied_opponent(position + 1, is_white, pieces):
             if cls.is_occupied_opponent(position + 1, is_white, pieces).get_piece_type() == Pieces.PAWN:
-                if last_move[2] == position + 1 and cls.get_rank(last_move[1]) == opponent_rank:
+                if last_move.end_square == position + 1 and cls.get_rank(last_move.start_square) == opponent_rank:
                     if is_white:
                         moves.append(Move(position, position + 9, Pieces.PAWN, True, True))
                     else:
@@ -296,7 +296,7 @@ class MovementRules:
         return position % 8
 
     @classmethod
-    def remove_check_moves(cls, piece, position, moves, king, pieces, last_move, can_castle) -> List[Move]:
+    def remove_check_moves(cls, piece, position, moves, king, pieces, last_move: Move, can_castle) -> List[Move]:
         filtered_moves = []
         piece.clear_square(position)
         for move in moves:
@@ -313,12 +313,11 @@ class MovementRules:
         return filtered_moves
 
     @classmethod
-    def is_check(cls, king: BitBoard, pieces, last_move, can_castle) -> bool:
+    def is_check(cls, king: BitBoard, pieces, last_move: Move, can_castle) -> bool:
         for bitboard in pieces:
             if bitboard.is_white() != king.is_white():
                 for move in cls.get_all_moves(bitboard, pieces, last_move, can_castle):
                     if move.end_square == cls.lowest_set_bit(king.get_board()):
-                        print(move.end_square)
                         return True
         return False
 
@@ -327,7 +326,7 @@ class MovementRules:
         return (n & -n).bit_length() - 1
 
     @classmethod
-    def is_checkmate(cls, king, pieces, last_move) -> bool:
+    def is_checkmate(cls, king, pieces, last_move: Move) -> bool:
         if not cls.is_check(king, pieces, last_move, (False, False)):
             return False
         for piece in pieces:
@@ -354,7 +353,7 @@ class MovementRules:
         return True
 
     @classmethod
-    def is_stalemate(cls, king, pieces, last_move, can_castle):
+    def is_stalemate(cls, king, pieces, last_move: Move, can_castle):
         for piece in pieces:
             if piece.is_white() == king.is_white():
                 positions = MovementRules.get_positions(piece.get_board())
