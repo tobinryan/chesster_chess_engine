@@ -1,6 +1,3 @@
-from enum import Enum
-
-from BitBoard import BitBoard
 from Pieces import Pieces
 
 
@@ -13,4 +10,5 @@ class Move:
         self.is_capture = is_capture
         self.en_passant = en_passant
         self.is_castle = is_castle
+        self.captured = None
 
