@@ -124,6 +124,10 @@ class ChessGUI:
                     running = False
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     self.handle_mouse_click(pygame.mouse.get_pos())
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_z:
+                        self.undo_move(self.last_move)
+                        self.draw_board(None)
 
             pygame.display.flip()
 
@@ -919,7 +923,7 @@ class ChessGUI:
         end_squares = self.get_squares(totalPoss)
         end_squares = [square for square in end_squares]
 
-        return [Move(sq, end_square, Pieces.ROOK, 1 << end_square & occ) for end_square in end_squares]
+        return [Move(sq, end_square, Pieces.KNIGHT, 1 << end_square & occ) for end_square in end_squares]
 
     def get_bishop_moves(self, sq: Square, is_white: bool) -> List[Move]:
         occ = self.get_occupied()
@@ -1239,6 +1243,7 @@ class ChessGUI:
         self.is_white_turn = not self.is_white_turn
 
     def undo_move(self, move: Move):
+
         self.is_white_turn = not self.is_white_turn
         board = self.get_bb(move.piece_type, self.is_white_turn)
         board.occupy_square(move.start_square)
