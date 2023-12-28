@@ -1,5 +1,6 @@
 import datetime
 import math
+import random
 from typing import List
 
 import pygame
@@ -43,6 +44,16 @@ class ChessGUI:
     ANTIDIAG_MASKS = [0x80, 0x8040, 0x804020, 0x80402010, 0x8040201008, 0x804020100804, 0x80402010080402,
                       0x8040201008040201, 0x4020100804020100, 0x2010080402010000, 0x1008040201000000,
                       0x804020100000000, 0x402010000000000, 0x201000000000000, 0x100000000000000]
+    KNIGHT_SPAN = 43234889994
+    KING_SPAN = 460039
+    FILE_A = 72340172838076673
+    FILE_H = -9187201950435737472
+    FILE_AB = 217020518514230019
+    FILE_GH = -4557430888798830400
+    RANK_1 = 255
+    RANK_4 = 4278190080
+    RANK_5 = 1095216660480
+    RANK_8 = -72057594037927936
 
     board = pygame.image.load('images/board.png')
 
@@ -443,8 +454,8 @@ class ChessGUI:
                 and self.bkn.get_board() == 0
                 and (self.wb.get_board() == 0 or self.bb.get_board() == 0)
                 and (
-                len(self.get_positions(self.wb.get_board())) == 1
-                or len(self.get_positions(self.bb.get_board())) == 1
+                len(self.get_squares(self.wb.get_board())) == 1
+                or len(self.get_squares(self.bb.get_board())) == 1
         )
         ):
             print("King & Bishop v. King")
@@ -456,8 +467,8 @@ class ChessGUI:
                 and self.bb.get_board() == 0
                 and (self.wkn.get_board() == 0 or self.bkn.get_board() == 0)
                 and (
-                len(self.get_positions(self.wkn.get_board())) == 1
-                or len(self.get_positions(self.bkn.get_board())) == 1
+                len(self.get_squares(self.wkn.get_board())) == 1
+                or len(self.get_squares(self.bkn.get_board())) == 1
         )
         ):
             print("King & Knight v. King")
@@ -467,10 +478,10 @@ class ChessGUI:
         if (
                 self.wkn.get_board() == 0
                 and self.bkn.get_board() == 0
-                and len(self.get_positions(self.wb.get_board())) == 1
-                and len(self.get_positions(self.bb.get_board())) == 1
-                and self.get_square_color(self.get_positions(self.wb.get_board())[0])
-                == self.get_square_color(self.get_positions(self.bb.get_board())[0])
+                and len(self.get_squares(self.wb.get_board())) == 1
+                and len(self.get_squares(self.bb.get_board())) == 1
+                and self.get_square_color(self.get_squares(self.wb.get_board())[0])
+                == self.get_square_color(self.get_squares(self.bb.get_board())[0])
         ):
             print("king and bishop vs king and bishop")
             return True
@@ -752,7 +763,7 @@ class ChessGUI:
 
     def get_all_moves(self, bitboard: BitBoard, can_castle) -> List[Move]:
         moves = []
-        positions = self.get_positions(bitboard.get_board())
+        positions = self.get_squares(bitboard.get_board())
         for position in positions:
             moves.extend(self.get_moves(bitboard, position, can_castle))
         return moves
@@ -771,38 +782,98 @@ class ChessGUI:
         elif bitboard.get_piece_type() == Pieces.KING:
             return self.get_king_moves(position, bitboard.is_white(), can_castle)
 
-    def get_pawn_moves(self, position, is_white) -> List[Move]:
+    def get_pawn_moves(self, sq: Square, is_white) -> List[Move]:
         moves = []
-        direction = 1 if is_white else -1
+        binarySq = 1 << sq
+        opp = self.get_black() if is_white else self.get_white()
+        occ = self.get_occupied()
 
-        target_position = position + 8 * direction
-        if self.is_valid_position(target_position) and not self.is_occupied(target_position):
-            moves.append(Move(position, target_position, Pieces.PAWN))
+        if is_white:
+            possibility = (binarySq << 7) & opp & ~self.FILE_A & ~self.RANK_8
+            moves.extend(Move(sq, end_square, Pieces.PAWN, True) for end_square in self.get_squares(possibility))
 
-        if (is_white and self.get_rank(position) == 1) or (not is_white and self.get_rank(position) == 6):
-            double_jump_position = position + 16 * direction
-            if self.is_valid_position(double_jump_position) and not self.is_occupied(double_jump_position) \
-                    and not self.is_occupied(target_position):
-                moves.append(Move(position, double_jump_position, Pieces.PAWN))
+            possibility = (binarySq << 9) & opp & ~self.FILE_H & ~self.RANK_8
+            moves.extend(Move(sq, end_square, Pieces.PAWN, True) for end_square in self.get_squares(possibility))
 
-        attack_left_position = position + 7 * direction
-        if (
-                (is_white and self.get_file(position) > 0) or
-                (not is_white and self.get_file(position) < 7)) and \
-                self.is_valid_position(attack_left_position) and \
-                self.is_occupied_opponent(attack_left_position, is_white):
-            moves.append(Move(position, attack_left_position, Pieces.PAWN, True))
+            possibility = (binarySq << 8) & ~occ & ~self.RANK_8
+            moves.extend(Move(sq, end_square, Pieces.PAWN) for end_square in self.get_squares(possibility))
 
-        attack_right_position = position + 9 * direction
-        if (
-                (is_white and self.get_file(position) < 7) or
-                (not is_white and self.get_file(position) > 0)) and \
-                self.is_valid_position(attack_right_position) and \
-                self.is_occupied_opponent(attack_right_position, is_white):
-            moves.append(Move(position, attack_right_position, Pieces.PAWN, True))
+            possibility = (binarySq << 16) & ~occ & (~occ << 8) & self.RANK_4
+            moves.extend(Move(sq, end_square, Pieces.PAWN) for end_square in self.get_squares(possibility))
 
-        if (is_white and self.get_rank(position) == 4) or (not is_white and self.get_rank(position) == 3):
-            moves.extend(self.get_en_passant(position, is_white))
+            possibility = (binarySq << 7) & opp & ~self.FILE_A & self.RANK_8
+            moves.extend(Move(sq, end_square, Pieces.PAWN, is_capture=True, is_promotion=True)
+                         for end_square in self.get_squares(possibility))
+
+            possibility = (binarySq << 9) & opp & ~self.FILE_H & self.RANK_8
+            moves.extend(Move(sq, end_square, Pieces.PAWN, is_capture=True, is_promotion=True)
+                         for end_square in self.get_squares(possibility))
+
+            possibility = (binarySq << 8) & ~occ & self.RANK_8
+            moves.extend(Move(sq, end_square, Pieces.PAWN, is_promotion=True)
+                         for end_square in self.get_squares(possibility))
+
+            if self.last_move:
+                e_file = self.get_file(self.last_move.end_square)
+                e_rank = self.get_rank(self.last_move.end_square)
+                if (
+                        self.last_move.piece_type == Pieces.PAWN and
+                        self.get_file(self.last_move.start_square) == e_file and
+                        abs(e_rank - self.get_rank(self.last_move.start_square)) == 2
+                ):
+
+                    possibility = (binarySq >> 1) & self.bp.get_board() & self.RANK_5 \
+                                  & ~self.FILE_H & self.FILE_MASKS[e_file]
+                    if possibility:
+                        moves.append(Move(sq, sq + 7, Pieces.PAWN, True, True))
+
+                    possibility = (binarySq << 1) & self.bp.get_board() & self.RANK_5 \
+                                  & ~self.FILE_A & self.FILE_MASKS[e_file]
+                    if possibility:
+                        moves.append(Move(sq, sq + 9, Pieces.PAWN, True, True))
+        else:
+            possibility = (binarySq >> 7) & opp & ~self.FILE_A & ~self.RANK_1
+            moves.extend(Move(sq, end_square, Pieces.PAWN, True) for end_square in self.get_squares(possibility))
+
+            possibility = (binarySq >> 9) & opp & ~self.FILE_H & ~self.RANK_1
+            moves.extend(Move(sq, end_square, Pieces.PAWN, True) for end_square in self.get_squares(possibility))
+
+            possibility = (binarySq >> 8) & ~occ & ~self.RANK_1
+            moves.extend(Move(sq, end_square, Pieces.PAWN) for end_square in self.get_squares(possibility))
+
+            possibility = (binarySq >> 16) & ~occ & (~occ >> 8) & self.RANK_5
+            moves.extend(Move(sq, end_square, Pieces.PAWN) for end_square in self.get_squares(possibility))
+
+            possibility = (binarySq >> 7) & opp & ~self.FILE_A & self.RANK_1
+            moves.extend(Move(sq, end_square, Pieces.PAWN, is_capture=True, is_promotion=True)
+                         for end_square in self.get_squares(possibility))
+
+            possibility = (binarySq >> 9) & opp & ~self.FILE_H & self.RANK_1
+            moves.extend(Move(sq, end_square, Pieces.PAWN, is_capture=True, is_promotion=True)
+                         for end_square in self.get_squares(possibility))
+
+            possibility = (binarySq >> 8) & ~occ & self.RANK_1
+            moves.extend(Move(sq, end_square, Pieces.PAWN, is_promotion=True)
+                         for end_square in self.get_squares(possibility))
+
+            if self.last_move:
+                e_file = self.get_file(self.last_move.end_square)
+                e_rank = self.get_rank(self.last_move.end_square)
+                if (
+                        self.last_move.piece_type == Pieces.PAWN and
+                        self.get_file(self.last_move.start_square) == e_file and
+                        abs(e_rank - self.get_rank(self.last_move.start_square)) == 2
+                ):
+
+                    possibility = (binarySq << 1) & self.wp.get_board() & self.RANK_4 \
+                                  & ~self.FILE_A & self.FILE_MASKS[e_file]
+                    if possibility:
+                        moves.append(Move(sq, sq - 7, Pieces.PAWN, True, True))
+
+                    possibility = (binarySq >> 1) & self.wp.get_board() & self.RANK_4 \
+                                  & ~self.FILE_H & self.FILE_MASKS[e_file]
+                    if possibility:
+                        moves.append(Move(sq, sq - 9, Pieces.PAWN, True, True))
 
         return moves
 
@@ -832,60 +903,65 @@ class ChessGUI:
                         moves.append(Move(position, position - 7, Pieces.PAWN, True, True))
         return moves
 
-    def get_knight_moves(self, position, is_white) -> List[Move]:
-        moves = []
-        directions = [(-2, -1), (-2, 1), (-1, -2), (-1, 2), (1, -2), (1, 2), (2, -1), (2, 1)]
+    def get_knight_moves(self, sq: Square, is_white) -> List[Move]:
+        occ = self.get_occupied()
+        teammate = self.get_white() if is_white else self.get_black()
+        if sq > 18:
+            totalPoss = self.KNIGHT_SPAN << (sq - 18)
+        else:
+            totalPoss = self.KNIGHT_SPAN >> (18 - sq)
+        if sq % 8 < 4:
+            totalPoss &= ~self.FILE_GH & ~teammate
+        else:
+            totalPoss &= ~self.FILE_AB & ~teammate
 
-        for dx, dy in directions:
-            new_position = position + (dy * 8) + dx
-            if (
-                    self.is_valid_position(new_position) and
-                    (self.is_occupied_opponent(new_position, is_white) or
-                     not self.is_occupied(new_position))
-                    and self.get_file(position) + dx == self.get_file(new_position)
-            ):
-                moves.append(Move(position, new_position, Pieces.KNIGHT,
-                                  self.is_occupied_opponent(new_position, is_white)))
+        end_squares = self.get_squares(totalPoss)
+        end_squares = [square for square in end_squares if 0 <= square <= 63]
 
-        return moves
+        return [Move(sq, end_square, Pieces.ROOK, 1 << end_square & occ) for end_square in end_squares]
 
     def get_bishop_moves(self, sq: Square, is_white: bool) -> List[Move]:
-        end_positions = self.diag_moves(sq, is_white)
-        return [Move(sq, end_square, Pieces.BISHOP, 1 << end_square & self.get_occupied())
-                for end_square in end_positions]
+        occ = self.get_occupied()
+        end_squares = self.diag_moves(sq, is_white)
+        return [Move(sq, end_square, Pieces.BISHOP, 1 << end_square & occ)
+                for end_square in end_squares]
 
-    def hv_moves(self, sq: Square, is_white: bool):
+    def hv_moves(self, sq: Square, is_white: bool) -> List[Square]:
+        if not self.is_valid_position(sq):
+            return []
         binaryPos = 1 << sq
-        o = self.get_occupied()
+        occ = self.get_occupied()
         teammate = self.get_white() if is_white else self.get_black()
-        hPoss = (o - 2 * binaryPos) ^ self.reverse(self.reverse(o) - (2 * self.reverse(binaryPos)))
-        vPoss = ((o & self.FILE_MASKS[self.get_file(sq)]) - (2 * binaryPos)) ^ \
-                self.reverse(self.reverse(o & self.FILE_MASKS[self.get_file(sq)]) - (2 * self.reverse(binaryPos)))
+        hPoss = (occ - 2 * binaryPos) ^ self.reverse(self.reverse(occ) - (2 * self.reverse(binaryPos)))
+        vPoss = ((occ & self.FILE_MASKS[self.get_file(sq)]) - (2 * binaryPos)) ^ \
+                self.reverse(self.reverse(occ & self.FILE_MASKS[self.get_file(sq)]) - (2 * self.reverse(binaryPos)))
         totalPoss = (hPoss & self.RANK_MASKS[self.get_rank(sq)]) | \
                     (vPoss & self.FILE_MASKS[self.get_file(sq)])
         totalPoss &= ~teammate
-        end_positions = self.get_positions(totalPoss)
-        return end_positions
+        end_squares = self.get_squares(totalPoss)
+        return end_squares
 
-    def diag_moves(self, sq: Square, is_white: bool):
+    def diag_moves(self, sq: Square, is_white: bool) -> List[Square]:
+        if not self.is_valid_position(sq):
+            return []
         binaryPos = 1 << sq
-        o = self.get_occupied()
+        occ = self.get_occupied()
         teammate = self.get_white() if is_white else self.get_black()
         diag = self.get_rank(sq) + self.get_file(sq)
         antidiag = self.get_rank(sq) + 7 - self.get_file(sq)
-        diagPoss = ((o & self.DIAG_MASKS[diag]) - 2 * binaryPos) ^ \
-                   self.reverse(self.reverse(o & self.DIAG_MASKS[diag]) - 2 * self.reverse(binaryPos))
-        antiDiagPoss = ((o & self.ANTIDIAG_MASKS[antidiag]) - 2 * binaryPos) ^ \
-                       self.reverse(self.reverse(o & self.ANTIDIAG_MASKS[antidiag]) - 2 * self.reverse(binaryPos))
+        diagPoss = ((occ & self.DIAG_MASKS[diag]) - 2 * binaryPos) ^ \
+                   self.reverse(self.reverse(occ & self.DIAG_MASKS[diag]) - 2 * self.reverse(binaryPos))
+        antiDiagPoss = ((occ & self.ANTIDIAG_MASKS[antidiag]) - 2 * binaryPos) ^ \
+                       self.reverse(self.reverse(occ & self.ANTIDIAG_MASKS[antidiag]) - 2 * self.reverse(binaryPos))
         totalPoss = diagPoss & self.DIAG_MASKS[diag] | antiDiagPoss & self.ANTIDIAG_MASKS[antidiag]
         totalPoss &= ~teammate
-        end_positions = self.get_positions(totalPoss)
-        return end_positions
+        end_squares = self.get_squares(totalPoss)
+        return end_squares
 
     def get_rook_moves(self, sq: Square, is_white, can_castle) -> List[Move]:  # TODO ADD CASTLING
-        end_positions = self.hv_moves(sq, is_white)
-        o = self.get_occupied()
-        return [Move(sq, end_square, Pieces.ROOK, 1 << end_square & o) for end_square in end_positions]
+        end_squares = self.hv_moves(sq, is_white)
+        occ = self.get_occupied()
+        return [Move(sq, end_square, Pieces.ROOK, 1 << end_square & occ) for end_square in end_squares]
 
     def get_castling_moves(self, position, can_castle, is_white, piece_type) -> List[Move]:
         moves = []
@@ -900,19 +976,19 @@ class ChessGUI:
 
         return moves
 
-    def get_king_castling_moves(self, position, is_white, short_castle, long_castle) -> List[Move]:
+    def get_king_castling_moves(self, sq: Square, is_white, short_castle, long_castle) -> List[Move]:
         moves = []
         dx = [i for i in range(1, 4)]
         if short_castle:
-            if not any(self.is_occupied(position + offset) for offset in dx[:2]):
-                rook = self.get_teammate(position + 3, is_white)
+            if not any(self.is_occupied(sq + offset) for offset in dx[:2]):
+                rook = self.get_teammate(sq + 3, is_white)
                 if rook is not None and rook.get_piece_type() == Pieces.ROOK and rook.is_white() == is_white:
-                    moves.append(Move(position, position + 3, Pieces.KING, is_castle=True))
+                    moves.append(Move(sq, sq + 3, Pieces.KING, is_castle=True))
         if long_castle:
-            if not any(self.is_occupied(position - offset) for offset in dx):
-                rook = self.get_teammate(position - 4, is_white)
+            if not any(self.is_occupied(sq - offset) for offset in dx):
+                rook = self.get_teammate(sq - 4, is_white)
                 if rook is not None and rook.get_piece_type() == Pieces.ROOK and rook.is_white() == is_white:
-                    moves.append(Move(position, position - 4, Pieces.KING, is_castle=True))
+                    moves.append(Move(sq, sq - 4, Pieces.KING, is_castle=True))
         return moves
 
     def get_rook_castling_moves(self, position, is_white, short_castle, long_castle) -> List[Move]:
@@ -935,28 +1011,48 @@ class ChessGUI:
         return moves
 
     def get_queen_moves(self, sq: Square, is_white: bool) -> List[Move]:
-        end_positions = self.hv_moves(sq, is_white) + self.diag_moves(sq, is_white)
+        end_squares = self.hv_moves(sq, is_white) + self.diag_moves(sq, is_white)
         o = self.get_occupied()
-        return [Move(sq, end_square, Pieces.QUEEN, 1 << end_square & o) for end_square in end_positions]
+        return [Move(sq, end_square, Pieces.QUEEN, 1 << end_square & o) for end_square in end_squares]
 
-    def get_king_moves(self, position, is_white, can_castle) -> List[Move]:
-        moves = []
-        directions = [(-1, -1), (-1, 1), (1, -1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]
-        for dx, dy in directions:
-            new_position = position + (dy * 8) + dx
-            is_occupied = self.is_occupied_opponent(new_position, is_white)
-            if (dx == -1 and self.get_file(new_position) == 7) or (dx == 1 and self.get_file(new_position) == 0):
-                continue
-            elif self.is_valid_position(new_position) and (
-                    not self.is_occupied(new_position) or is_occupied):
-                moves.append(Move(position, new_position, Pieces.KING, is_occupied))
+    def get_king_moves(self, sq: Square, is_white: bool, can_castle) -> List[Move]:
+        opp = self.get_black() if is_white else self.get_white()
+        teammate = self.get_white() if is_white else self.get_black()
 
-        moves.extend(self.get_castling_moves(position, can_castle, is_white, Pieces.KING))
-        return moves
+        if sq > 9:
+            possibility = self.KING_SPAN << (sq - 9)
+        else:
+            possibility = self.KING_SPAN >> (9 - sq)
+        if possibility % 8 < 4:
+            possibility &= ~self.FILE_GH & ~teammate
+        else:
+            possibility &= ~self.FILE_AB & ~teammate
+
+        end_squares = self.get_squares(possibility)
+        return [Move(sq, end_square, Pieces.KING, 1 << end_square & opp) for end_square in end_squares]
+
+        # moves = []
+        # directions = [(-1, -1), (-1, 1), (1, -1), (1, 1), (-1, 0), (1, 0), (0, -1), (0, 1)]
+        # for dx, dy in directions:
+        #     new_position = position + (dy * 8) + dx
+        #     is_occupied = self.is_occupied_opponent(new_position, is_white)
+        #     if (dx == -1 and self.get_file(new_position) == 7) or (dx == 1 and self.get_file(new_position) == 0):
+        #         continue
+        #     elif self.is_valid_position(new_position) and (
+        #             not self.is_occupied(new_position) or is_occupied):
+        #         moves.append(Move(position, new_position, Pieces.KING, is_occupied))
+        #
+        # moves.extend(self.get_castling_moves(position, can_castle, is_white, Pieces.KING))
+        # return moves
 
     @staticmethod
-    def get_positions(bitboard):
-        return [position for position in range(64) if (bitboard >> position) & 1]
+    def get_squares(bitboard) -> List[Square]:
+        squares = []
+        while bitboard:
+            square = bitboard.bit_length() - 1
+            squares.append(square)
+            bitboard ^= 1 << square  # Clear the least significant bit
+        return squares
 
     @staticmethod
     def is_valid_position(position):
@@ -1001,7 +1097,7 @@ class ChessGUI:
             return False
         for piece in self.pieces:
             if piece.is_white() == king.is_white():
-                positions = self.get_positions(piece.get_board())
+                positions = self.get_squares(piece.get_board())
                 for position in positions:
                     moves = self.get_moves(piece, position, (False, False))
                     piece.clear_square(position)
@@ -1025,7 +1121,7 @@ class ChessGUI:
     def is_stalemate(self, king):
         for piece in self.pieces:
             if piece.is_white() == king.is_white():
-                positions = self.get_positions(piece.get_board())
+                positions = self.get_squares(piece.get_board())
                 for position in positions:
                     moves = self.get_moves(piece, position, (False, False))
                     legal_moves = self.remove_check_moves(piece, position, moves, king, (False, False))
@@ -1088,7 +1184,7 @@ class ChessGUI:
         for piece in self.pieces:
             if piece.is_white() == self.is_white_turn:
                 moves = self.get_all_moves(piece, self.white_can_castle if self.is_white_turn
-                else self.black_can_castle)
+                                           else self.black_can_castle)
                 for m in moves:
                     self.make_move(m)
                     count += self.perft(depth - 1)
@@ -1180,6 +1276,6 @@ if __name__ == "__main__":
     chess_gui = ChessGUI()
     chess_gui.run()
     start = datetime.datetime.now()
-    print(chess_gui.perft(4))
+    print(chess_gui.perft(3))
     end = datetime.datetime.now()
     print(end - start)
