@@ -561,11 +561,11 @@ class ChessGUI:
         can_castle = self.white_can_castle if piece.is_white() else self.black_can_castle
         # Get available castling moves for the piece
         castling_moves = self.get_castling_moves(
-            start_square, can_castle, piece.is_white(), piece.get_piece_type()
+            start_square, can_castle
         )
 
         # Check if the next position is a valid castling move
-        if self.is_valid_move(dest_square, castling_moves):
+        if self.is_valid_move(start_square, dest_square, castling_moves):
             # Perform castling maneuver
             self.perform_castling(piece, start_square, dest_square)
             return True
@@ -651,6 +651,7 @@ class ChessGUI:
 
         # Store information about the last move
         self.last_move = move
+        print(bin(self.get_unsafe(self.is_white_turn)))
 
     def update_can_castle(self, piece, square):
         """
@@ -931,51 +932,17 @@ class ChessGUI:
         occ = self.get_occupied()
         return [Move(sq, end_square, Pieces.ROOK, 1 << end_square & occ) for end_square in end_squares]
 
-    def get_castling_moves(self, position, can_castle, is_white, piece_type) -> List[Move]:
+    def get_castling_moves(self, sq: Square, can_castle) -> List[Move]:
         moves = []
+        occ = self.get_occupied()
+        binarySq = 1 << sq
         short_castle, long_castle = can_castle
-        if not (short_castle or long_castle):
-            return moves
-
-        if piece_type == Pieces.KING:
-            moves.extend(self.get_king_castling_moves(position, is_white, short_castle, long_castle))
-        elif piece_type == Pieces.ROOK:
-            moves.extend(self.get_rook_castling_moves(position, is_white, short_castle, long_castle))
-
-        return moves
-
-    def get_king_castling_moves(self, sq: Square, is_white, short_castle, long_castle) -> List[Move]:
-        moves = []
-        dx = [i for i in range(1, 4)]
         if short_castle:
-            if not any(self.is_occupied(sq + offset) for offset in dx[:2]):
-                rook = self.get_teammate(sq + 3, is_white)
-                if rook is not None and rook.get_piece_type() == Pieces.ROOK and rook.is_white() == is_white:
-                    moves.append(Move(sq, sq + 3, Pieces.KING, is_castle=True))
+            if (occ & (binarySq << 1) == 0) & (occ & (binarySq << 2) == 0):
+                moves.append(Move(sq, sq + 3, Pieces.KING, is_castle=True))
         if long_castle:
-            if not any(self.is_occupied(sq - offset) for offset in dx):
-                rook = self.get_teammate(sq - 4, is_white)
-                if rook is not None and rook.get_piece_type() == Pieces.ROOK and rook.is_white() == is_white:
-                    moves.append(Move(sq, sq - 4, Pieces.KING, is_castle=True))
-        return moves
-
-    def get_rook_castling_moves(self, position, is_white, short_castle, long_castle) -> List[Move]:
-        moves = []
-        direction = 1 if self.get_file(position) == 0 else -1 if self.get_file(position) == 7 else 0
-        dx = [position + direction * i for i in range(1, 4)]
-
-        if direction == 1:
-            if long_castle:
-                if not any(self.is_occupied(pos) for pos in dx):
-                    king = self.get_teammate(position + 4, is_white)
-                    if king is not None and king.get_piece_type() == Pieces.KING and king.is_white() == is_white:
-                        moves.append(Move(position, position + 4, Pieces.ROOK, is_castle=True))
-        elif direction == -1:
-            if short_castle:
-                if not any(self.is_occupied(pos) for pos in dx[:-1]):
-                    king = self.get_teammate(position - 3, is_white)
-                    if king is not None and king.get_piece_type() == Pieces.KING and king.is_white() == is_white:
-                        moves.append(Move(position, position - 3, Pieces.ROOK, is_castle=True))
+            if (occ & (binarySq >> 1) == 0) & (occ & (binarySq >> 2) == 0) & (occ & (binarySq >> 3) == 0):
+                moves.append(Move(sq, sq - 4, Pieces.KING, is_castle=True))
         return moves
 
     def get_queen_moves(self, sq: Square, is_white: bool) -> List[Move]:
@@ -997,7 +964,8 @@ class ChessGUI:
             possibility &= ~self.FILE_AB & ~teammate
 
         end_squares = self.get_squares(possibility)
-        return [Move(sq, end_square, Pieces.KING, 1 << end_square & opp) for end_square in end_squares]
+        return [Move(sq, end_square, Pieces.KING, 1 << end_square & opp) for end_square in end_squares] + \
+            self.get_castling_moves(sq, can_castle)
 
     def get_unsafe(self, is_white: bool):
         p, r, kn, b, q, k = (self.pieces[(2 * i + is_white)].get_board() for i in range(6))
@@ -1246,7 +1214,7 @@ class ChessGUI:
         for piece in self.pieces:
             if piece.is_white() == self.is_white_turn:
                 moves = self.get_all_moves(piece, self.white_can_castle if self.is_white_turn
-                        else self.black_can_castle)
+                else self.black_can_castle)
                 for m in moves:
                     self.make_move(m)
                     count += self.perft(depth - 1)
