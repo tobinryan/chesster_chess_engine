@@ -565,7 +565,7 @@ class ChessGUI:
         can_castle = self.white_can_castle if piece.is_white() else self.black_can_castle
         # Get available castling moves for the piece
         castling_moves = self.get_castling_moves(
-            start_square, can_castle
+            start_square, piece.is_white(), can_castle
         )
 
         # Check if the next position is a valid castling move
@@ -761,6 +761,9 @@ class ChessGUI:
         move += self.square_name(self.last_move.end_square)
         return move
 
+    def move_notation(self, move: Move):
+        return self.square_name(move.start_square) + self.square_name(move.end_square)
+
     def get_all_moves(self, bitboard: BitBoard, can_castle) -> List[Move]:
         moves = []
         positions = self.get_squares(bitboard.get_board())
@@ -928,33 +931,20 @@ class ChessGUI:
     def get_bishop_moves(self, sq: Square, is_white: bool) -> List[Move]:
         occ = self.get_occupied()
         end_squares = self.get_squares(self.diag_moves(sq, is_white))
-        return [Move(sq, end_square, Pieces.BISHOP, 1 << end_square & occ)
+        return [Move(sq, end_square, Pieces.BISHOP, (1 << end_square) & occ)
                 for end_square in end_squares]
 
-    def get_rook_moves(self, sq: Square, is_white, can_castle) -> List[Move]:  # TODO ADD CASTLING
+    def get_rook_moves(self, sq: Square, is_white, can_castle) -> List[Move]:
         end_squares = self.get_squares(self.hv_moves(sq, is_white))
         occ = self.get_occupied()
-        return [Move(sq, end_square, Pieces.ROOK, 1 << end_square & occ) for end_square in end_squares]
-
-    def get_castling_moves(self, sq: Square, can_castle) -> List[Move]:
-        moves = []
-        occ = self.get_occupied()
-        binarySq = 1 << sq
-        short_castle, long_castle = can_castle
-        if short_castle:
-            if (occ & (binarySq << 1) == 0) & (occ & (binarySq << 2) == 0):
-                moves.append(Move(sq, sq + 3, Pieces.KING, is_castle=True))
-        if long_castle:
-            if (occ & (binarySq >> 1) == 0) & (occ & (binarySq >> 2) == 0) & (occ & (binarySq >> 3) == 0):
-                moves.append(Move(sq, sq - 4, Pieces.KING, is_castle=True))
-        return moves
+        return [Move(sq, end_square, Pieces.ROOK, (1 << end_square) & occ) for end_square in end_squares]
 
     def get_queen_moves(self, sq: Square, is_white: bool) -> List[Move]:
         end_squares = self.get_squares(self.hv_moves(sq, is_white) | self.diag_moves(sq, is_white))
         o = self.get_occupied()
-        return [Move(sq, end_square, Pieces.QUEEN, 1 << end_square & o) for end_square in end_squares]
+        return [Move(sq, end_square, Pieces.QUEEN, (1 << end_square) & o) for end_square in end_squares]
 
-    def get_king_moves(self, sq: Square, is_white: bool, can_castle) -> List[Move]:  # TODO add castling moves
+    def get_king_moves(self, sq: Square, is_white: bool, can_castle) -> List[Move]:
         opp = self.get_black() if is_white else self.get_white()
         teammate = self.get_white() if is_white else self.get_black()
 
@@ -962,14 +952,30 @@ class ChessGUI:
             possibility = self.KING_SPAN << (sq - 9)
         else:
             possibility = self.KING_SPAN >> (9 - sq)
-        if possibility % 8 < 4:
+        if sq % 8 < 4:
             possibility &= ~self.FILE_GH & ~teammate
         else:
             possibility &= ~self.FILE_AB & ~teammate
 
+        possibility &= self.BOARD_SPAN
         end_squares = self.get_squares(possibility)
         return [Move(sq, end_square, Pieces.KING, 1 << end_square & opp) for end_square in end_squares] + \
-            self.get_castling_moves(sq, can_castle)
+               self.get_castling_moves(sq, is_white, can_castle)
+
+    def get_castling_moves(self, sq: Square, is_white, can_castle) -> List[Move]:
+        moves = []
+        occ = self.get_occupied()
+        r = self.wr.get_board() if is_white else self.br.get_board()
+        binarySq = 1 << sq
+        short_castle, long_castle = can_castle
+        if short_castle:
+            if (occ & (binarySq << 1) == 0) & (occ & (binarySq << 2) == 0) & (r & (binarySq << 3)):
+                moves.append(Move(sq, sq + 3, Pieces.KING, is_castle=True))
+        if long_castle:
+            if (occ & (binarySq >> 1) == 0) & (occ & (binarySq >> 2) == 0) & \
+                    (occ & (binarySq >> 3) == 0) & (r & (binarySq >> 4)):
+                moves.append(Move(sq, sq - 4, Pieces.KING, is_castle=True))
+        return moves
 
     def get_unsafe(self, is_white: bool):
         p, r, kn, b, q, k = (self.pieces[(2 * i + is_white)].get_board() for i in range(6))
@@ -999,7 +1005,7 @@ class ChessGUI:
             i = qb & ~(qb - 1)
             while i != 0:
                 sq = self.lowest_set_bit(i)
-                poss = self.diag_moves(sq, is_white)
+                poss = self.diag_moves(sq, not is_white)
                 unsafe |= poss
                 qb &= ~i
                 i = qb & ~(qb - 1)
@@ -1008,7 +1014,7 @@ class ChessGUI:
             i = qr & ~(qr - 1)
             while i != 0:
                 sq = self.lowest_set_bit(i)
-                poss = self.hv_moves(sq, is_white)
+                poss = self.hv_moves(sq, not is_white)
                 unsafe |= poss
                 qr &= ~i
                 i = qr & ~(qr - 1)
@@ -1051,7 +1057,7 @@ class ChessGUI:
             i = qb & ~(qb - 1)
             while i != 0:
                 sq = self.lowest_set_bit(i)
-                poss = self.diag_moves(sq, is_white)
+                poss = self.diag_moves(sq, not is_white)
                 unsafe |= poss
                 qb &= ~i
                 i = qb & ~(qb - 1)
@@ -1060,7 +1066,7 @@ class ChessGUI:
             i = qr & ~(qr - 1)
             while i != 0:
                 sq = self.lowest_set_bit(i)
-                poss = self.hv_moves(sq, is_white)
+                poss = self.hv_moves(sq, not is_white)
                 unsafe |= poss
                 qr &= ~i
                 i = qr & ~(qr - 1)
@@ -1211,19 +1217,33 @@ class ChessGUI:
         else:
             return self.bk.is_occupied(position)
 
+
+    max_depth = 0
+
     def perft(self, depth):
         if depth == 0:
             return 1
-        count = 0
+        moves = []
+        total_count = 0
         for piece in self.pieces:
             if piece.is_white() == self.is_white_turn:
-                moves = self.get_all_moves(piece, self.white_can_castle if self.is_white_turn
-                else self.black_can_castle)
-                for m in moves:
-                    self.make_move(m)
-                    count += self.perft(depth - 1)
-                    self.undo_move(m)
-        return count
+                moves.extend(self.get_all_moves(piece, self.white_can_castle if self.is_white_turn
+                else self.black_can_castle))
+
+        for m in moves:
+            self.make_move(m)
+            wk = self.wk.get_board()
+
+            bk = self.bk.get_board()
+            if (((wk & self.get_unsafe(True)) == 0) & (not self.is_white_turn)) | (((bk & self.get_unsafe(False)) == 0) & self.is_white_turn):
+                self.update_can_castle(self.get_bb(m.piece_type, not self.is_white_turn), m.start_square)
+                x = self.perft(depth - 1)
+                if depth == self.max_depth:
+                    print(self.move_notation(m) + ":", x)
+                total_count += x
+            self.undo_move(m)
+
+        return total_count
 
     def make_move(self, move: Move):
         board = self.get_bb(move.piece_type, self.is_white_turn)
@@ -1306,11 +1326,39 @@ class ChessGUI:
         bitboard = (bitboard << 32) | (bitboard >> 32)
         return bitboard
 
+    @staticmethod
+    def find_differences(str1, str2):
+        # Split the input strings into individual pairs
+        pairs1 = [pair.strip() for pair in str1.split('\n')]
+        pairs2 = [pair.strip() for pair in str2.split('\n')]
+
+        # Create dictionaries to store the counts for each pair
+        counts1 = {pair.split(':')[0]: int(pair.split(':')[1]) for pair in pairs1}
+        counts2 = {pair.split(':')[0]: int(pair.split(':')[1]) for pair in pairs2}
+
+        # Find the keys that are present in one dictionary but not in the other
+        keys_only_in_1 = set(counts1.keys()) - set(counts2.keys())
+        keys_only_in_2 = set(counts2.keys()) - set(counts1.keys())
+
+        # Find the keys that are present in both dictionaries but with different values
+        different_values = [key for key in set(counts1.keys()) & set(counts2.keys()) if counts1[key] != counts2[key]]
+
+        # Combine all the differences into a single list
+        differences = {
+            'keys_only_in_1': sorted(list(keys_only_in_1)),
+            'keys_only_in_2': sorted(list(keys_only_in_2)),
+            'different_values': sorted(different_values)
+        }
+        print("keys_only_in_1", (x for x in sorted(list(keys_only_in_1))))
+
+        return differences
+
 
 if __name__ == "__main__":
     chess_gui = ChessGUI()
-    chess_gui.run()
     start = datetime.datetime.now()
-    print(chess_gui.perft(3))
+    chess_gui.max_depth = 5
+    # chess_gui.run()
+    print(chess_gui.perft(chess_gui.max_depth))
     end = datetime.datetime.now()
     print(end - start)
