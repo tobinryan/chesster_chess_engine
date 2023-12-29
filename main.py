@@ -1,4 +1,3 @@
-import datetime
 import math
 from typing import List
 
@@ -655,7 +654,6 @@ class ChessGUI:
 
         # Store information about the last move
         self.last_move = move
-        print(bin(self.get_unsafe(self.is_white_turn)))
 
     def update_can_castle(self, piece, square):
         """
@@ -761,7 +759,7 @@ class ChessGUI:
         move += self.square_name(self.last_move.end_square)
         return move
 
-    def move_notation(self, move: Move):
+    def algebraic_notation(self, move: Move):
         return self.square_name(move.start_square) + self.square_name(move.end_square)
 
     def get_all_moves(self, bitboard: BitBoard, can_castle) -> List[Move]:
@@ -1169,17 +1167,6 @@ class ChessGUI:
                         return False
         return True
 
-    def is_occupied_opponent(self, position, is_white):
-        if not self.is_valid_square(position):
-            return False
-        if is_white:
-            opponent = self.bp.get_board() | self.br.get_board() | self.bkn.get_board() | self.bb.get_board() | \
-                       self.bq.get_board() | self.bk.get_board()
-        else:
-            opponent = self.wp.get_board() | self.wr.get_board() | self.wkn.get_board() | self.wb.get_board() | \
-                       self.wq.get_board() | self.wk.get_board()
-        return (1 << position) & opponent
-
     def is_occupied(self, square):
         occupied = self.wp.get_board() | self.bp.get_board() | self.wr.get_board() | \
                    self.br.get_board() | self.wkn.get_board() | self.bkn.get_board() | self.wb.get_board() | \
@@ -1195,14 +1182,6 @@ class ChessGUI:
                 return piece
         return None
 
-    def get_teammate(self, position, is_white):
-        if not self.is_valid_square(position):
-            return None
-        for piece in self.pieces:
-            if piece and piece.is_occupied(position) and is_white == piece.is_white():
-                return piece
-        return None
-
     def get_opponent(self, position, is_white):
         if not self.is_valid_square(position):
             return None
@@ -1210,12 +1189,6 @@ class ChessGUI:
             if piece and piece.is_occupied(position) and not is_white == piece.is_white():
                 return piece
         return None
-
-    def is_occupied_king(self, position, is_white):
-        if is_white:
-            return self.wk.is_occupied(position)
-        else:
-            return self.bk.is_occupied(position)
 
 
     max_depth = 0
@@ -1239,7 +1212,7 @@ class ChessGUI:
                 self.update_can_castle(self.get_bb(m.piece_type, not self.is_white_turn), m.start_square)
                 x = self.perft(depth - 1)
                 if depth == self.max_depth:
-                    print(self.move_notation(m) + ":", x)
+                    print(self.algebraic_notation(m) + ":", x)
                 total_count += x
             self.undo_move(m)
 
@@ -1327,7 +1300,7 @@ class ChessGUI:
         return bitboard
 
     @staticmethod
-    def find_differences(str1, str2):
+    def find_differences(str1, str2):  # TODO WILL REMOVE AFTER DEBUGGING MOVEMENT
         # Split the input strings into individual pairs
         pairs1 = [pair.strip() for pair in str1.split('\n')]
         pairs2 = [pair.strip() for pair in str2.split('\n')]
@@ -1356,9 +1329,6 @@ class ChessGUI:
 
 if __name__ == "__main__":
     chess_gui = ChessGUI()
-    start = datetime.datetime.now()
-    chess_gui.max_depth = 5
-    # chess_gui.run()
-    print(chess_gui.perft(chess_gui.max_depth))
-    end = datetime.datetime.now()
-    print(end - start)
+    chess_gui.run()
+    # chess_gui.max_depth = 5
+    # print(chess_gui.perft(chess_gui.max_depth))
