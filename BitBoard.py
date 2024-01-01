@@ -84,6 +84,12 @@ class BitBoard:
         """
         return self._is_white
 
+    def clear_board(self):
+        """
+        Clears the binary value of the bitboard.
+        """
+        self._board = 0
+
     def __str__(self):
         """
         Returns a string representation of the bitboard in binary.

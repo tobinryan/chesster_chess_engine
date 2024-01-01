@@ -27,12 +27,12 @@ class ChessGUI:
         A8, B8, C8, D8, E8, F8, G8, H8,
     ] = range(64)
     UNICODE_PIECE_SYMBOLS = {
-        "R": "♖", "r": "♜",
-        "N": "♘", "n": "♞",
-        "B": "♗", "b": "♝",
-        "Q": "♕", "q": "♛",
-        "K": "♔", "k": "♚",
-        "P": "♙", "p": "♟",
+        "r": "♖", "R": "♜",
+        "n": "♘", "N": "♞",
+        "b": "♗", "B": "♝",
+        "q": "♕", "Q": "♛",
+        "k": "♔", "K": "♚",
+        "p": "♙", "P": "♟",
     }
     RANK_MASKS = [0xFF << (8 * i) for i in range(8)]
     FILE_MASKS = [0x0101010101010101 << i for i in range(8)]
@@ -341,7 +341,7 @@ class ChessGUI:
 
         # Handle specific piece movements (e.g. en passant, castling)
         if move.en_passant:
-            self.handle_en_passant(start_square, piece.is_white(), dest_square)
+            self.handle_en_passant(dest_square, piece.is_white())
         elif piece.get_piece_type() in {Pieces.KING, Pieces.ROOK}:
             if self.handle_castling_moves(piece, start_square, dest_square):
                 self.half_move_count += 1
@@ -523,7 +523,7 @@ class ChessGUI:
             return True
         return False
 
-    def handle_en_passant(self, start_square, is_white, dest_square):
+    def handle_en_passant(self, dest_square, is_white):
         """
         Handles en passant captures.
 
@@ -750,7 +750,7 @@ class ChessGUI:
     def move_notation(self):
         move = ""
         piece = self.PIECE_SYMBOLS[self.last_move.piece_type]
-        piece = self.UNICODE_PIECE_SYMBOLS[piece.upper() if self.is_white_turn else piece]
+        piece = self.UNICODE_PIECE_SYMBOLS[piece if self.is_white_turn else piece.upper()]
         move += piece
         if self.last_move.is_capture and self.last_move.piece_type == Pieces.PAWN or self.last_move.en_passant:
             move += self.FILE_NAMES[self.get_file(self.last_move.start_square)] + "x"
@@ -777,7 +777,7 @@ class ChessGUI:
         elif bitboard.get_piece_type() == Pieces.BISHOP:
             return self.get_bishop_moves(position, bitboard.is_white())
         elif bitboard.get_piece_type() == Pieces.ROOK:
-            return self.get_rook_moves(position, bitboard.is_white(), can_castle)
+            return self.get_rook_moves(position, bitboard.is_white())
         elif bitboard.get_piece_type() == Pieces.QUEEN:
             return self.get_queen_moves(position, bitboard.is_white())
         elif bitboard.get_piece_type() == Pieces.KING:
@@ -932,7 +932,7 @@ class ChessGUI:
         return [Move(sq, end_square, Pieces.BISHOP, (1 << end_square) & occ)
                 for end_square in end_squares]
 
-    def get_rook_moves(self, sq: Square, is_white, can_castle) -> List[Move]:
+    def get_rook_moves(self, sq: Square, is_white) -> List[Move]:
         end_squares = self.get_squares(self.hv_moves(sq, is_white))
         occ = self.get_occupied()
         return [Move(sq, end_square, Pieces.ROOK, (1 << end_square) & occ) for end_square in end_squares]
@@ -1190,7 +1190,6 @@ class ChessGUI:
                 return piece
         return None
 
-
     max_depth = 0
 
     def perft(self, depth):
@@ -1323,12 +1322,104 @@ class ChessGUI:
             'different_values': sorted(different_values)
         }
         print("keys_only_in_1", (x for x in sorted(list(keys_only_in_1))))
+        print("keys_only_in_2", (x for x in sorted(list(keys_only_in_2))))
+        print(list(keys_only_in_2))
 
         return differences
+
+    def import_fen(self, fen: str):
+        for piece in self.pieces:
+            piece.clear_board()
+        self.white_can_castle = (False, False)
+        self.black_can_castle = (False, False)
+
+        curr_char = 0
+        board_idx = 56
+        while fen[curr_char] != ' ':
+            match fen[curr_char]:
+                case 'P':
+                    self.wp.occupy_square(board_idx)
+                    board_idx += 1
+                case 'p':
+                    self.bp.occupy_square(board_idx)
+                    board_idx += 1
+                case 'N':
+                    self.wkn.occupy_square(board_idx)
+                    board_idx += 1
+                case 'n':
+                    self.bkn.occupy_square(board_idx)
+                    board_idx += 1
+                case 'R':
+                    self.wr.occupy_square(board_idx)
+                    board_idx += 1
+                case 'r':
+                    self.br.occupy_square(board_idx)
+                    board_idx += 1
+                case 'B':
+                    self.wb.occupy_square(board_idx)
+                    board_idx += 1
+                case 'b':
+                    self.bb.occupy_square(board_idx)
+                    board_idx += 1
+                case 'Q':
+                    self.wq.occupy_square(board_idx)
+                    board_idx += 1
+                case 'q':
+                    self.bq.occupy_square(board_idx)
+                    board_idx += 1
+                case 'K':
+                    self.wk.occupy_square(board_idx)
+                    board_idx += 1
+                case 'k':
+                    self.bk.occupy_square(board_idx)
+                    board_idx += 1
+                case '/':
+                    board_idx -= 16
+                case '1':
+                    board_idx += 1
+                case '2':
+                    board_idx += 2
+                case '3':
+                    board_idx += 3
+                case '4':
+                    board_idx += 4
+                case '5':
+                    board_idx += 5
+                case '6':
+                    board_idx += 6
+                case '7':
+                    board_idx += 7
+                case '8':
+                    board_idx += 8
+            curr_char += 1
+
+        curr_char += 1
+        self.is_white_turn = fen[curr_char] == 'w'
+        curr_char += 2
+        while fen[curr_char] != ' ':
+            match fen[curr_char]:
+                case '-':
+                    curr_char += 1
+                case 'K':
+                    self.white_can_castle = (True, self.white_can_castle[1])
+                case 'Q':
+                    self.white_can_castle = (self.white_can_castle[0], True)
+                case 'k':
+                    self.black_can_castle = (True, self.black_can_castle[1])
+                case 'q':
+                    self.black_can_castle = (self.black_can_castle[0], True)
+            curr_char += 1
+
+        curr_char += 1
+        if fen[curr_char] != '-':
+            file = fen[curr_char].lower()
+            file_idx = ord(file) - ord('a')
+            if self.is_white_turn:
+                self.last_move = Move(48 + file_idx, 32 + file_idx, Pieces.PAWN)
+            else:
+                self.last_move = Move(8 + file_idx, 24 + file_idx, Pieces.PAWN)
 
 
 if __name__ == "__main__":
     chess_gui = ChessGUI()
     chess_gui.run()
-    # chess_gui.max_depth = 5
-    # print(chess_gui.perft(chess_gui.max_depth))
