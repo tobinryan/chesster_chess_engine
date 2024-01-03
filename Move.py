@@ -13,3 +13,8 @@ class Move:
         self.is_promotion = is_promotion
         self.captured = None
 
+    def __eq__(self, other):
+        if isinstance(other, Move):
+            return (self.start_square == other.start_square and
+                    self.end_square == other.end_square)
+        return False
