@@ -117,6 +117,16 @@ class Board:
         return (n & -n).bit_length() - 1
 
     @staticmethod
+    def reverse(n):
+        n = ((n & 0x5555555555555555) << 1) | ((n >> 1) & 0x5555555555555555)
+        n = ((n & 0x3333333333333333) << 2) | ((n >> 2) & 0x3333333333333333)
+        n = ((n & 0x0F0F0F0F0F0F0F0F) << 4) | ((n >> 4) & 0x0F0F0F0F0F0F0F0F)
+        n = ((n & 0x00FF00FF00FF00FF) << 8) | ((n >> 8) & 0x00FF00FF00FF00FF)
+        n = ((n & 0x0000FFFF0000FFFF) << 16) | ((n >> 16) & 0x0000FFFF0000FFFF)
+        n = (n << 32) | (n >> 32)
+        return n
+
+    @staticmethod
     def is_valid_square(sq: Square):
         return 0 <= sq <= 63
 
@@ -181,7 +191,7 @@ class Board:
         # Get all possible moves for the piece and remove any that result in check
         moves = self.get_moves(piece, start_square, can_castle)
         king = self.wk if self.is_white_turn else self.bk
-        moves = self.remove_check_moves(piece, start_square, moves, king, can_castle)
+        moves = self.remove_check_moves(piece, start_square, moves, king)
 
         move = self.is_valid_move(start_square, dest_square, piece.get_piece_type(), moves)
 
@@ -546,16 +556,21 @@ class Board:
     def get_castling_moves(self, sq: Square, is_white, can_castle) -> List[Move]:
         moves = []
         occ = self.get_occupied()
+        unsafe = self.get_unsafe(is_white)
         r = self.wr.get_board() if is_white else self.br.get_board()
         binarySq = 1 << sq
         short_castle, long_castle = can_castle
         if short_castle:
-            if (occ & (binarySq << 1) == 0) & (occ & (binarySq << 2) == 0) & (r & (binarySq << 3) != 0):
-                moves.append(Move(sq, sq + 3, Pieces.KING, is_castle=True))
+            if (unsafe & binarySq == 0) & (unsafe & (binarySq << 1) == 0) & \
+                    (unsafe & (binarySq << 2) == 0) & (unsafe & (binarySq << 3) == 0):
+                if (occ & (binarySq << 1) == 0) & (occ & (binarySq << 2) == 0) & (r & (binarySq << 3) != 0):
+                    moves.append(Move(sq, sq + 3, Pieces.KING, is_castle=True))
         if long_castle:
-            if (occ & (binarySq >> 1) == 0) & (occ & (binarySq >> 2) == 0) & \
-                    (occ & (binarySq >> 3) == 0) & (r & (binarySq >> 4) != 0):
-                moves.append(Move(sq, sq - 4, Pieces.KING, is_castle=True))
+            if (unsafe & binarySq == 0) & (unsafe & (binarySq >> 1) == 0) & (unsafe & (binarySq >> 2) == 0) & \
+                    (unsafe & (binarySq >> 3) == 0) & (unsafe & (binarySq >> 4) == 0):
+                if (occ & (binarySq >> 1) == 0) & (occ & (binarySq >> 2) == 0) & \
+                        (occ & (binarySq >> 3) == 0) & (r & (binarySq >> 4) != 0):
+                    moves.append(Move(sq, sq - 4, Pieces.KING, is_castle=True))
         return moves
 
     def get_unsafe(self, is_white: bool):
@@ -565,7 +580,7 @@ class Board:
             unsafe = (p >> 7) & ~self.FILE_A
             unsafe |= (p >> 9) & ~self.FILE_H
 
-            i = kn & (kn - 1)
+            i = kn & ~(kn - 1)
             while i != 0:
                 sq = self.lsb(i)
                 if sq > 18:
@@ -617,7 +632,7 @@ class Board:
             unsafe = (p << 7) & ~self.FILE_H
             unsafe |= (p << 9) & ~self.FILE_A
 
-            i = kn & (kn - 1)
+            i = kn & ~(kn - 1)
             while i != 0:
                 sq = self.lsb(i)
                 if sq > 18:
@@ -773,7 +788,7 @@ class Board:
             return True
         return False
 
-    def remove_check_moves(self, piece, position, moves, king, can_castle) -> List[Move]:
+    def remove_check_moves(self, piece, position, moves, king) -> List[Move]:
         filtered_moves = []
         piece.clear_square(position)
         for move in moves:
@@ -781,7 +796,7 @@ class Board:
             if opponent:
                 opponent.clear_square(move.end_square)
             piece.occupy_square(move.end_square)
-            if not self.is_check(king, can_castle):
+            if not self.is_check(king):
                 filtered_moves.append(move)
             piece.clear_square(move.end_square)
             if opponent:
@@ -789,16 +804,12 @@ class Board:
         piece.occupy_square(position)
         return filtered_moves
 
-    def is_check(self, king: BitBoard, can_castle) -> bool:
-        for bitboard in self.pieces:
-            if bitboard.is_white() != king.is_white():
-                for move in self.get_all_moves(bitboard, can_castle):
-                    if move.end_square == self.lsb(king.get_board()):
-                        return True
-        return False
+    def is_check(self, king: BitBoard) -> bool:
+        unsafe = self.get_unsafe(king.is_white())
+        return unsafe & king.get_board()
 
-    def is_checkmate(self, king) -> bool:  # opponent is opposite of king
-        if not self.is_check(king, (False, False)):
+    def is_checkmate(self, king) -> bool:
+        if not self.is_check(king):
             return False
         for piece in self.pieces:
             if piece.is_white() == king.is_white():
@@ -811,7 +822,7 @@ class Board:
                         if opponent:
                             opponent.clear_square(move.end_square)
                         piece.occupy_square(move.end_square)
-                        if not self.is_check(king, (False, False)):
+                        if not self.is_check(king):
                             piece.clear_square(move.end_square)
                             piece.occupy_square(position)
                             if opponent:
@@ -829,17 +840,10 @@ class Board:
                 positions = self.get_squares(piece.get_board())
                 for position in positions:
                     moves = self.get_moves(piece, position, (False, False))
-                    legal_moves = self.remove_check_moves(piece, position, moves, king, (False, False))
+                    legal_moves = self.remove_check_moves(piece, position, moves, king)
                     if len(legal_moves) != 0:
                         return False
         return True
-
-    def is_occupied(self, square):
-        occupied = self.wp.get_board() | self.bp.get_board() | self.wr.get_board() | \
-                   self.br.get_board() | self.wkn.get_board() | self.bkn.get_board() | self.wb.get_board() | \
-                   self.bb.get_board() | self.wq.get_board() | self.bq.get_board() | self.wk.get_board() | \
-                   self.bk.get_board()
-        return occupied & 1 << square
 
     def get_opponent(self, position, is_white):
         if not self.is_valid_square(position):
@@ -901,16 +905,6 @@ class Board:
             else:
                 self.black_can_castle = False, False
         board.clear_square(move.end_square)
-
-    @staticmethod
-    def reverse(bitboard):
-        bitboard = ((bitboard & 0x5555555555555555) << 1) | ((bitboard >> 1) & 0x5555555555555555)
-        bitboard = ((bitboard & 0x3333333333333333) << 2) | ((bitboard >> 2) & 0x3333333333333333)
-        bitboard = ((bitboard & 0x0F0F0F0F0F0F0F0F) << 4) | ((bitboard >> 4) & 0x0F0F0F0F0F0F0F0F)
-        bitboard = ((bitboard & 0x00FF00FF00FF00FF) << 8) | ((bitboard >> 8) & 0x00FF00FF00FF00FF)
-        bitboard = ((bitboard & 0x0000FFFF0000FFFF) << 16) | ((bitboard >> 16) & 0x0000FFFF0000FFFF)
-        bitboard = (bitboard << 32) | (bitboard >> 32)
-        return bitboard
 
     @staticmethod
     def find_differences(str1, str2):  # TODO WILL REMOVE AFTER DEBUGGING MOVEMENT

@@ -198,8 +198,7 @@ class ChessGUI:
                 0].is_white() else self.board.black_can_castle
             king = self.board.wk if self.board.is_white_turn else self.board.bk
             moves = self.board.get_moves(self.board.selected[0], self.board.selected[1], (short_castle, long_castle))
-            moves = self.board.remove_check_moves(self.board.selected[0], self.board.selected[1], moves,
-                                                  king, (short_castle, long_castle))
+            moves = self.board.remove_check_moves(self.board.selected[0], self.board.selected[1], moves, king)
             self.draw_board(moves)
 
     def handle_second_click(self, clicked_piece: BitBoard, clicked_square: Square):
@@ -228,7 +227,7 @@ class ChessGUI:
             can_castle = self.board.white_can_castle if clicked_piece.is_white() else self.board.black_can_castle
             king = self.board.wk if self.board.is_white_turn else self.board.bk
             moves = self.board.get_moves(clicked_piece, clicked_square, can_castle)
-            moves = self.board.remove_check_moves(clicked_piece, clicked_square, moves, king, can_castle)
+            moves = self.board.remove_check_moves(clicked_piece, clicked_square, moves, king)
         else:
             # If the same piece is clicked a second time, unhighlight the piece and moves
             self.board.selected = None
@@ -236,20 +235,6 @@ class ChessGUI:
 
         # Update the displayed board based on the updated game state
         self.draw_board(moves)
-
-    def handle_promotion_choice(self, square, promotion_choice):
-        """
-        Handles the player's choice of a promotion piece and updates the board.
-
-        Parameters:
-        - square: The square on the board where the promotion occurred.
-        - is_white: A boolean indicating whether the promoting pawn is white.
-        - promotion_choice: The type of piece chosen for promotion.
-
-        This method locates the corresponding piece in the pieces list based on the
-        promotion choice, color, and occupies the promotion square with the chosen piece.
-        """
-        promotion_choice.occupy_square(square)
 
     def sound(self):
         move = self.board.last_move
@@ -259,9 +244,7 @@ class ChessGUI:
             pygame.mixer.Sound.play(self.capture_sound)
         elif move.is_promotion:
             pygame.mixer.Sound.play(self.promote_sound)
-        elif self.board.is_check(self.board.wk if self.board.is_white_turn else self.board.bk,
-                                 self.board.white_can_castle if self.board.is_white_turn
-                                 else self.board.black_can_castle):
+        elif self.board.is_check(self.board.wk if self.board.is_white_turn else self.board.bk):
             pygame.mixer.Sound.play(self.check_sound)
         else:
             pygame.mixer.Sound.play(self.move_sound)
@@ -298,7 +281,7 @@ class ChessGUI:
                     click_position = pygame.mouse.get_pos()
                     promotion_choice = promotion_popup.handle_click(click_position)
                     if promotion_choice:
-                        self.handle_promotion_choice(square, promotion_choice)
+                        promotion_choice.occupy_square(square)
                         return
 
             promotion_popup.draw()
