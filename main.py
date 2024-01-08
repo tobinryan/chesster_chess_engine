@@ -7,6 +7,7 @@ from BitBoard import BitBoard
 from Move import Move
 from Pieces import Pieces
 from Board import Board
+from Engine import Engine
 from PromotionPopup import PromotionPopup
 
 
@@ -32,6 +33,7 @@ class ChessGUI:
         self.promote_sound = pygame.mixer.Sound("sounds/promote.ogg")
 
         self.board = Board(self)
+        self.engine = Engine(self.board)
 
     def run(self):
         """
@@ -42,10 +44,16 @@ class ChessGUI:
         running = True
         self.draw_board(None)  # Initial drawing of the chess board
         while running:
+            if self.board.is_white_turn:
+                m = chess_gui.engine.minimax(5, chess_gui.board.is_white_turn)
+                chess_gui.board.make_move(m, False)
+                self.draw_board(None)
             self.clock.tick(self.FPS)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
-                    running = False
+                    # Clean up and exit the game
+                    pygame.quit()
+                    sys.exit()
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     self.handle_mouse_click(pygame.mouse.get_pos())
                 elif event.type == pygame.KEYDOWN:
@@ -55,9 +63,8 @@ class ChessGUI:
 
             pygame.display.flip()
 
-        # Clean up and exit the game
-        pygame.quit()
-        sys.exit()
+        self.draw_board(None)
+
 
     def draw_highlighted_piece(self):
         """
@@ -214,7 +221,6 @@ class ChessGUI:
         """
         if self.board.move(self.board.selected, clicked_square):
             # If the move is successful, toggle the turn and reset the selected piece
-            self.board.is_white_turn = not self.board.is_white_turn
             print(self.move_notation())
             self.sound()
             self.board.selected = None
@@ -249,7 +255,7 @@ class ChessGUI:
         else:
             pygame.mixer.Sound.play(self.move_sound)
 
-    def promote_pawn(self, bitboard: BitBoard, square: Square):
+    def promote_pawn(self, bitboard: BitBoard, square: Square, choice: Pieces = None):
         """
         Promotes a pawn to a higher-value piece.
 
@@ -264,6 +270,10 @@ class ChessGUI:
 
         # Clear the square occupied by the pawn
         bitboard.clear_square(square)
+
+        if choice:
+            self.board.get_bb(choice, bitboard.is_white()).occupy_square(square)
+            return
 
         # Display the promotion popup
         promotion_popup = PromotionPopup(self.screen, [piece for piece in self.board.pieces if
@@ -404,7 +414,8 @@ class ChessGUI:
                 return piece
         return None
 
+
 if __name__ == "__main__":
     chess_gui = ChessGUI()
-    chess_gui.import_fen("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - ")
+    chess_gui.import_fen("4k3/8/8/8/1Q4R1/8/8/3K4 b - - 0 1")
     chess_gui.run()

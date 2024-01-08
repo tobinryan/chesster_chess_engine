@@ -1,5 +1,6 @@
 import random
 
+from Move import Move
 from Pieces import Pieces
 
 

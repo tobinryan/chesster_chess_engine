@@ -71,6 +71,7 @@ class Board:
         self.half_move_count = 0
         self.white_can_castle = (True, True)  # Tuple (short_castle, long_castle)
         self.black_can_castle = (True, True)  # Tuple (short_castle, long_castle)
+        self.last_castle_state = None
         self.Hash = Hashing(self.pieces)
         self.RANK_NAMES = ["1", "2", "3", "4", "5", "6", "7", "8"]
         self.FILE_NAMES = ["a", "b", "c", "d", "e", "f", "g", "h"]
@@ -169,71 +170,6 @@ class Board:
     def get_black(self):
         return self.bp.get_board() | self.br.get_board() | self.bkn.get_board() | \
                self.bb.get_board() | self.bq.get_board() | self.bk.get_board()
-
-    def move(self, piece_to_move: (BitBoard, Square), dest_square: Square) -> bool:
-        """
-        Moves a chess piece to the specified destination square.
-
-        Parameters:
-        - piece_to_move: Tuple (piece, start_square) representing the piece to be moved.
-        - dest_square: The index of the destination square (0-63).
-
-        Returns:
-        True if the move is successful, False otherwise.
-
-        This method performs various checks to validate the move, updates the game state,
-        handles specific piece movements (e.g., en passant, pawn promotion, castling),
-        and updates game-related parameters.
-        """
-        piece, start_square = piece_to_move
-        can_castle = self.white_can_castle if piece.is_white() else self.black_can_castle
-
-        # Get all possible moves for the piece and remove any that result in check
-        moves = self.get_moves(piece, start_square, can_castle)
-        king = self.wk if self.is_white_turn else self.bk
-        moves = self.remove_check_moves(piece, start_square, moves, king)
-
-        move = self.is_valid_move(start_square, dest_square, piece.get_piece_type(), moves)
-
-        # Check if the destination square is a valid move
-        if not move:
-            return False
-
-        # Handle opponent piece if present on the destination square
-        opponent_piece = self.get_opponent(dest_square, piece.is_white())
-
-        # Handle specific piece movements (e.g. en passant, castling)
-        if move.en_passant:
-            self.handle_en_passant(dest_square, piece.is_white())
-        if move.is_capture:
-            self.handle_opponent_piece(opponent_piece, dest_square)
-        if move.is_castle:
-            self.handle_castling(start_square, dest_square, piece.is_white())
-        if move.is_promotion:
-            self.gui.promote_pawn(piece, move.end_square)
-
-        # Update game state, including handling game-ending conditions
-        self.half_move_count += 1
-        self.update_can_castle(move, piece.is_white())
-        self.handle_game_state_endings()
-
-        # Reset half-move count if a capture or pawn move occurs
-        if opponent_piece or move.piece_type == Pieces.PAWN:
-            self.half_move_count = 0
-
-        # Update the hash value of the current game state after the move
-        self.Hash.update_hash_after_move((start_square, dest_square, piece.get_piece_type()),
-                                         (opponent_piece.get_piece_type() if opponent_piece else None, dest_square))
-
-        if not move.is_castle:
-            piece.clear_square(move.start_square)
-        if not move.is_castle and not move.is_promotion:
-            piece.occupy_square(move.end_square)
-
-        # Store information about the last move
-        self.last_move = move
-
-        return True
 
     @staticmethod
     def is_valid_move(start_sq: Square, dest_sq: Square, piece_type: Pieces, moves: List[Move]):
@@ -681,7 +617,7 @@ class Board:
 
             return unsafe
 
-    def handle_game_state_endings(self):
+    def handle_game_state_endings(self) -> bool:
         """
         Handles different game state endings.
 
@@ -693,36 +629,32 @@ class Board:
 
         if self.is_checkmate(self.wk):
             print("Black won!")
-            pygame.quit()
-            sys.exit()
+            return True
         elif self.is_checkmate(self.bk):
             print("White won!")
-            pygame.quit()
-            sys.exit()
+            return True
 
         # Check for stalemate and exit the game if found
         elif self.is_stalemate(self.bk if self.is_white_turn else self.wk):
             print("Stalemate.")
-            pygame.quit()
-            sys.exit()
+            return True
 
         # Check for three-move repetition and exit the game if found
         elif self.Hash.three_move_repetition():
             print("Draw - three move repetition.")
-            pygame.quit()
-            sys.exit()
+            return True
 
         # Check for the fifty-move rule and exit the game if found
         elif self.half_move_count >= 100:
             print("Draw - fifty move rule.")
-            pygame.quit()
-            sys.exit()
+            return True
 
         # Check for insufficient material and exit the game if found
         elif self.is_insufficient_material():
             print("Draw - insufficient material.")
-            pygame.quit()
-            sys.exit()
+            return True
+
+        return False
 
     def is_insufficient_material(self):
         """
@@ -881,30 +813,129 @@ class Board:
 
         return total_count
 
-    def make_move(self, move: Move):
-        board = self.get_bb(move.piece_type, self.is_white_turn)
-        board.clear_square(move.start_square)
+    def make_move(self, move: Move, isEngine: bool):
+        piece = self.get_bb(move.piece_type, self.is_white_turn)
+        piece.clear_square(move.start_square)
+        opponent_piece = self.get_opponent(move.end_square, piece.is_white())
+
         if move.is_capture:
-            if not move.en_passant:
-                move.captured = self.get_opponent(move.end_square, self.is_white_turn)
-                move.captured.clear_square(move.end_square)
-        self.update_can_castle(move, self.is_white_turn)
+            self.handle_opponent_piece(opponent_piece, move.end_square)
+            move.captured = opponent_piece
+        if move.en_passant:
+            self.handle_en_passant(move.end_square, piece.is_white())
+        if move.is_castle:
+            self.last_castle_state = self.white_can_castle if piece.is_white() else self.black_can_castle
+            self.handle_castling(move.start_square, move.end_square, piece.is_white())
+        if move.is_promotion:
+            if isEngine:
+                self.gui.promote_pawn(piece, move.end_square, Pieces.QUEEN)
+            else:
+                self.gui.promote_pawn(piece, move.end_square)
+
+        # Update game state, including handling game-ending conditions
+        self.half_move_count += 1
+        self.update_can_castle(move, piece.is_white())
+
+        # Reset half-move count if a capture or pawn move occurs
+        if opponent_piece or move.piece_type == Pieces.PAWN:
+            self.half_move_count = 0
+
+        self.Hash.update_hash_after_move((move.start_square, move.end_square, piece.get_piece_type()),
+                                         (opponent_piece.get_piece_type() if opponent_piece else None, move.end_square))
+
+        if not move.is_castle:
+            piece.clear_square(move.start_square)
+        if not move.is_castle and not move.is_promotion:
+            piece.occupy_square(move.end_square)
+
+        if not isEngine:
+            if self.handle_game_state_endings():
+                self.gui.running = False
+
+        # Store information about the last move
         self.last_move = move
-        board.occupy_square(move.end_square)
+
         self.is_white_turn = not self.is_white_turn
+
+    def move(self, piece_to_move: (BitBoard, Square), dest_square: Square) -> bool:
+        """
+        Moves a chess piece to the specified destination square.
+
+        Parameters:
+        - piece_to_move: Tuple (piece, start_square) representing the piece to be moved.
+        - dest_square: The index of the destination square (0-63).
+
+        Returns:
+        True if the move is successful, False otherwise.
+
+        This method performs various checks to validate the move, updates the game state,
+        handles specific piece movements (e.g., en passant, pawn promotion, castling),
+        and updates game-related parameters.
+        """
+        piece, start_square = piece_to_move
+        can_castle = self.white_can_castle if piece.is_white() else self.black_can_castle
+
+        # Get all possible moves for the piece and remove any that result in check
+        moves = self.get_moves(piece, start_square, can_castle)
+        king = self.wk if self.is_white_turn else self.bk
+        moves = self.remove_check_moves(piece, start_square, moves, king)
+
+        move = self.is_valid_move(start_square, dest_square, piece.get_piece_type(), moves)
+
+        # Check if the destination square is a valid move
+        if not move:
+            return False
+
+        self.make_move(move, False)
+        return True
 
     def undo_move(self, move: Move):
         self.is_white_turn = not self.is_white_turn
-        board = self.get_bb(move.piece_type, self.is_white_turn)
-        board.occupy_square(move.start_square)
-        if move.captured:
-            move.captured.occupy_square(move.end_square)
+        piece = self.get_bb(move.piece_type, self.is_white_turn)
+        opponent_piece = move.captured
+
+        self.half_move_count = 0
+
+        if not move.is_castle:
+            piece.occupy_square(move.start_square)
+        if not move.is_castle and not move.is_promotion:
+            piece.clear_square(move.end_square)
+
+        if move.is_promotion:
+            for piece in self.pieces:
+                piece.clear_square(move.end_square)
         if move.is_castle:
+            self.undo_castling(move.start_square, move.end_square, piece.is_white())
             if self.is_white_turn:
-                self.white_can_castle = False, False
+                self.white_can_castle = self.last_castle_state
             else:
-                self.black_can_castle = False, False
-        board.clear_square(move.end_square)
+                self.black_can_castle = self.last_castle_state
+        if move.en_passant:
+            self.undo_en_passant(move.end_square, piece.is_white())
+        if move.is_capture:
+            opponent_piece.occupy_square(move.end_square)
+
+    def undo_castling(self, start_square: Square, end_square: Square, is_white: bool):
+        king = self.wk if is_white else self.bk
+        rook = self.wr if is_white else self.br
+
+        # Determine the displacements for the king and rook based on castling direction (king side or queen side)
+        rook_dx = -2 if start_square < end_square else 3
+        king_dx = 2 if start_square < end_square else -2
+
+        # Clear the current positions of the king or rook
+        king.clear_square(start_square + king_dx)
+
+        # Move the king to the new position
+        king.occupy_square(start_square)
+
+        # Move the rook involved in castling
+        rook.clear_square(end_square + rook_dx)
+
+        rook.occupy_square(end_square)
+
+    def undo_en_passant(self, end_square: Square, is_white: bool):
+        pass
 
     @staticmethod
     def find_differences(str1, str2):  # TODO WILL REMOVE AFTER DEBUGGING MOVEMENT
