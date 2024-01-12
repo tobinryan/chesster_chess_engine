@@ -45,7 +45,7 @@ class ChessGUI:
         self.draw_board(None)  # Initial drawing of the chess board
         while running:
             if self.board.is_white_turn:
-                m = chess_gui.engine.minimax(5, chess_gui.board.is_white_turn)
+                m = chess_gui.engine.select_move(3)
                 chess_gui.board.make_move(m, False)
                 self.draw_board(None)
             self.clock.tick(self.FPS)
@@ -96,21 +96,22 @@ class ChessGUI:
         pygame.draw.circle(large_circle_box, (0, 0, 0, 32), (self.SQUARE_SIZE // 2, self.SQUARE_SIZE // 2), 50, 10)
 
         for move in moves:
-            if move.is_castle:
-                # Large circle for castling moves
-                self.screen.blit(large_circle_box, (self.SQUARE_SIZE * (move.end_square % 8),
-                                                    700 - self.SQUARE_SIZE * (move.end_square // 8)))
-            if self.board.wk.is_occupied(move.end_square) or self.board.bk.is_occupied(move.end_square):
-                # Avoid highlighting the king's square
-                continue
-            elif move.is_capture:
-                # Large circle for capturing moves
-                self.screen.blit(large_circle_box, (self.SQUARE_SIZE * (move.end_square % 8),
-                                                    700 - self.SQUARE_SIZE * (move.end_square // 8)))
-            else:
-                # Small circle for non-capturing moves
-                self.screen.blit(small_circle_box, (self.SQUARE_SIZE * (move.end_square % 8),
-                                                    700 - self.SQUARE_SIZE * (move.end_square // 8)))
+            if move.start_square == self.board.selected[1]:
+                if move.is_castle:
+                    # Large circle for castling moves
+                    self.screen.blit(large_circle_box, (self.SQUARE_SIZE * (move.end_square % 8),
+                                                        700 - self.SQUARE_SIZE * (move.end_square // 8)))
+                if self.board.wk.is_occupied(move.end_square) or self.board.bk.is_occupied(move.end_square):
+                    # Avoid highlighting the king's square
+                    continue
+                elif move.is_capture or move.en_passant:
+                    # Large circle for capturing moves
+                    self.screen.blit(large_circle_box, (self.SQUARE_SIZE * (move.end_square % 8),
+                                                        700 - self.SQUARE_SIZE * (move.end_square // 8)))
+                else:
+                    # Small circle for non-capturing moves
+                    self.screen.blit(small_circle_box, (self.SQUARE_SIZE * (move.end_square % 8),
+                                                        700 - self.SQUARE_SIZE * (move.end_square // 8)))
 
     def draw_board(self, moves):
         """
@@ -204,8 +205,8 @@ class ChessGUI:
             short_castle, long_castle = self.board.white_can_castle if self.board.selected[
                 0].is_white() else self.board.black_can_castle
             king = self.board.wk if self.board.is_white_turn else self.board.bk
-            moves = self.board.get_moves(self.board.selected[0], self.board.selected[1], (short_castle, long_castle))
-            moves = self.board.remove_check_moves(self.board.selected[0], self.board.selected[1], moves, king)
+            moves = self.board.get_moves(self.board.selected[0], (short_castle, long_castle))
+            moves = self.board.remove_check_moves(self.board.selected[0], moves, king)
             self.draw_board(moves)
 
     def handle_second_click(self, clicked_piece: BitBoard, clicked_square: Square):
@@ -232,8 +233,8 @@ class ChessGUI:
             self.board.selected = clicked_piece, clicked_square
             can_castle = self.board.white_can_castle if clicked_piece.is_white() else self.board.black_can_castle
             king = self.board.wk if self.board.is_white_turn else self.board.bk
-            moves = self.board.get_moves(clicked_piece, clicked_square, can_castle)
-            moves = self.board.remove_check_moves(clicked_piece, clicked_square, moves, king)
+            moves = self.board.get_moves(clicked_piece, can_castle)
+            moves = self.board.remove_check_moves(clicked_piece, moves, king)
         else:
             # If the same piece is clicked a second time, unhighlight the piece and moves
             self.board.selected = None
@@ -246,7 +247,7 @@ class ChessGUI:
         move = self.board.last_move
         if move.is_castle:
             pygame.mixer.Sound.play(self.castle_sound)
-        elif move.is_capture:
+        elif move.is_capture or move.en_passant:
             pygame.mixer.Sound.play(self.capture_sound)
         elif move.is_promotion:
             pygame.mixer.Sound.play(self.promote_sound)
@@ -417,5 +418,5 @@ class ChessGUI:
 
 if __name__ == "__main__":
     chess_gui = ChessGUI()
-    chess_gui.import_fen("4k3/8/8/8/1Q4R1/8/8/3K4 b - - 0 1")
+    # chess_gui.import_fen("4k3/8/8/8/1Q4R1/8/8/3K4 b - - 0 1")
     chess_gui.run()
