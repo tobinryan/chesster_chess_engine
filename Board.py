@@ -291,26 +291,28 @@ class Board:
                 elif self.get_file(move.start_square) == 7:
                     self.black_can_castle = False, self.black_can_castle[1]
 
-    def get_all_moves(self, bitboard: BitBoard, can_castle) -> List[Move]:
+    def get_all_moves(self) -> List[Move]:
         moves = []
-        positions = self.get_squares(bitboard.get_board())
-        for position in positions:
-            moves.extend(self.get_moves(bitboard, position, can_castle))
+        can_castle = self.white_can_castle if self.is_white_turn else self.black_can_castle
+        for piece in reversed(self.pieces):
+            if piece.is_white() == self.is_white_turn:
+                moves.extend(self.get_moves(piece, can_castle))
+
         return moves
 
-    def get_moves(self, bitboard: BitBoard, position, can_castle) -> List[Move]:
+    def get_moves(self, bitboard: BitBoard, can_castle) -> List[Move]:
         if bitboard.get_piece_type() == Pieces.PAWN:
-            return self.get_pawn_moves(position, bitboard.is_white())
+            return self.get_pawn_moves(bitboard.get_board(), bitboard.is_white())
         elif bitboard.get_piece_type() == Pieces.KNIGHT:
-            return self.get_knight_moves(position, bitboard.is_white())
+            return self.get_knight_moves(bitboard.get_board(), bitboard.is_white())
         elif bitboard.get_piece_type() == Pieces.BISHOP:
-            return self.get_bishop_moves(position, bitboard.is_white())
+            return self.get_bishop_moves(bitboard.get_board(), bitboard.is_white())
         elif bitboard.get_piece_type() == Pieces.ROOK:
-            return self.get_rook_moves(position, bitboard.is_white())
+            return self.get_rook_moves(bitboard.get_board(), bitboard.is_white())
         elif bitboard.get_piece_type() == Pieces.QUEEN:
-            return self.get_queen_moves(position, bitboard.is_white())
+            return self.get_queen_moves(bitboard.get_board(), bitboard.is_white())
         elif bitboard.get_piece_type() == Pieces.KING:
-            return self.get_king_moves(position, bitboard.is_white(), can_castle)
+            return self.get_king_moves(bitboard.get_board(), bitboard.is_white(), can_castle)
 
     def hv_moves(self, sq: Square, is_white: bool) -> int:
         if not self.is_valid_square(sq):
@@ -342,36 +344,67 @@ class Board:
         totalPoss &= ~teammate
         return totalPoss
 
-    def get_pawn_moves(self, sq: Square, is_white) -> List[Move]:
+    def get_pawn_moves(self, bitboard, is_white) -> List[Move]:
         moves = []
-        binarySq = 1 << sq
         opp = self.get_black() if is_white else self.get_white()
         occ = self.get_occupied()
 
         if is_white:
-            possibility = (binarySq << 7) & opp & ~self.FILE_H & ~self.RANK_8
-            moves.extend(Move(sq, end_square, Pieces.PAWN, True) for end_square in self.get_squares(possibility))
+            poss = (bitboard << 7) & opp & ~self.FILE_H & ~self.RANK_8
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq - 7, end_sq, Pieces.PAWN, True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq << 9) & opp & ~self.FILE_A & ~self.RANK_8
-            moves.extend(Move(sq, end_square, Pieces.PAWN, True) for end_square in self.get_squares(possibility))
+            poss = (bitboard << 9) & opp & ~self.FILE_A & ~self.RANK_8
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq - 9, end_sq, Pieces.PAWN, True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq << 8) & ~occ & ~self.RANK_8
-            moves.extend(Move(sq, end_square, Pieces.PAWN) for end_square in self.get_squares(possibility))
+            poss = (bitboard << 8) & ~occ & ~self.RANK_8
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq - 8, end_sq, Pieces.PAWN))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq << 16) & ~occ & (~occ << 8) & self.RANK_4
-            moves.extend(Move(sq, end_square, Pieces.PAWN) for end_square in self.get_squares(possibility))
+            poss = (bitboard << 16) & ~occ & (~occ << 8) & self.RANK_4
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq - 16, end_sq, Pieces.PAWN))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq << 7) & opp & ~self.FILE_H & self.RANK_8
-            moves.extend(Move(sq, end_square, Pieces.PAWN, is_capture=True, is_promotion=True)
-                         for end_square in self.get_squares(possibility))
+            poss = (bitboard << 7) & opp & ~self.FILE_H & self.RANK_8
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq - 7, end_sq, Pieces.PAWN, is_capture=True, is_promotion=True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq << 9) & opp & ~self.FILE_A & self.RANK_8
-            moves.extend(Move(sq, end_square, Pieces.PAWN, is_capture=True, is_promotion=True)
-                         for end_square in self.get_squares(possibility))
+            poss = (bitboard << 9) & opp & ~self.FILE_A & self.RANK_8
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq - 9, end_sq, Pieces.PAWN, is_capture=True, is_promotion=True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq << 8) & ~occ & self.RANK_8
-            moves.extend(Move(sq, end_square, Pieces.PAWN, is_promotion=True)
-                         for end_square in self.get_squares(possibility))
+            poss = (bitboard << 8) & ~occ & self.RANK_8
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq - 8, end_sq, Pieces.PAWN, is_promotion=True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
             if self.last_move:
                 e_file = self.get_file(self.last_move.end_square)
@@ -382,39 +415,73 @@ class Board:
                         abs(e_rank - self.get_rank(self.last_move.start_square)) == 2
                 ):
 
-                    possibility = (binarySq >> 1) & self.bp.get_board() & self.RANK_5 \
+                    poss = (bitboard >> 1) & self.bp.get_board() & self.RANK_5 \
                                   & ~self.FILE_H & self.FILE_MASKS[e_file]
-                    if possibility:
+                    if poss:
+                        sq = poss.bit_length()
                         moves.append(Move(sq, sq + 7, Pieces.PAWN, en_passant=True))
 
-                    possibility = (binarySq << 1) & self.bp.get_board() & self.RANK_5 \
+                    poss = (bitboard << 1) & self.bp.get_board() & self.RANK_5 \
                                   & ~self.FILE_A & self.FILE_MASKS[e_file]
-                    if possibility:
+                    if poss:
+                        sq = poss.bit_length() - 2
                         moves.append(Move(sq, sq + 9, Pieces.PAWN, en_passant=True))
         else:
-            possibility = (binarySq >> 7) & opp & ~self.FILE_A & ~self.RANK_1
-            moves.extend(Move(sq, end_square, Pieces.PAWN, True) for end_square in self.get_squares(possibility))
+            poss = (bitboard >> 7) & opp & ~self.FILE_A & ~self.RANK_1
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq + 7, end_sq, Pieces.PAWN, True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq >> 9) & opp & ~self.FILE_H & ~self.RANK_1
-            moves.extend(Move(sq, end_square, Pieces.PAWN, True) for end_square in self.get_squares(possibility))
+            poss = (bitboard >> 9) & opp & ~self.FILE_H & ~self.RANK_1
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq + 9, end_sq, Pieces.PAWN, True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq >> 8) & ~occ & ~self.RANK_1
-            moves.extend(Move(sq, end_square, Pieces.PAWN) for end_square in self.get_squares(possibility))
+            poss = (bitboard >> 8) & ~occ & ~self.RANK_1
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq + 8, end_sq, Pieces.PAWN))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq >> 16) & ~occ & (~occ >> 8) & self.RANK_5
-            moves.extend(Move(sq, end_square, Pieces.PAWN) for end_square in self.get_squares(possibility))
+            poss = (bitboard >> 16) & ~occ & (~occ >> 8) & self.RANK_5
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq + 16, end_sq, Pieces.PAWN))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq >> 7) & opp & ~self.FILE_A & self.RANK_1
-            moves.extend(Move(sq, end_square, Pieces.PAWN, is_capture=True, is_promotion=True)
-                         for end_square in self.get_squares(possibility))
+            poss = (bitboard >> 7) & opp & ~self.FILE_A & self.RANK_1
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq + 7, end_sq, Pieces.PAWN, is_capture=True, is_promotion=True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq >> 9) & opp & ~self.FILE_H & self.RANK_1
-            moves.extend(Move(sq, end_square, Pieces.PAWN, is_capture=True, is_promotion=True)
-                         for end_square in self.get_squares(possibility))
+            poss = (bitboard >> 9) & opp & ~self.FILE_H & self.RANK_1
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq + 9, end_sq, Pieces.PAWN, is_capture=True, is_promotion=True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
-            possibility = (binarySq >> 8) & ~occ & self.RANK_1
-            moves.extend(Move(sq, end_square, Pieces.PAWN, is_promotion=True)
-                         for end_square in self.get_squares(possibility))
+            poss = (bitboard >> 8) & ~occ & self.RANK_1
+            i = poss & ~(poss - 1)
+            while i != 0:
+                end_sq = self.lsb(i)
+                moves.append(Move(end_sq + 8, end_sq, Pieces.PAWN, is_promotion=True))
+                poss &= ~i
+                i = poss & ~(poss - 1)
 
             if self.last_move:
                 e_file = self.get_file(self.last_move.end_square)
@@ -425,55 +492,107 @@ class Board:
                         abs(e_rank - self.get_rank(self.last_move.start_square)) == 2
                 ):
 
-                    possibility = (binarySq << 1) & self.wp.get_board() & self.RANK_4 \
+                    poss = (bitboard << 1) & self.wp.get_board() & self.RANK_4 \
                                   & ~self.FILE_A & self.FILE_MASKS[e_file]
-                    if possibility:
+                    if poss:
+                        sq = poss.bit_length() - 2
                         moves.append(Move(sq, sq - 7, Pieces.PAWN, en_passant=True))
 
-                    possibility = (binarySq >> 1) & self.wp.get_board() & self.RANK_4 \
+                    poss = (bitboard >> 1) & self.wp.get_board() & self.RANK_4 \
                                   & ~self.FILE_H & self.FILE_MASKS[e_file]
-                    if possibility:
+                    if poss:
+                        sq = poss.bit_length()
                         moves.append(Move(sq, sq - 9, Pieces.PAWN, en_passant=True))
 
         return moves
 
-    def get_knight_moves(self, sq: Square, is_white) -> List[Move]:
+    def get_knight_moves(self, bitboard, is_white) -> List[Move]:
+        moves = []
         occ = self.get_occupied()
         teammate = self.get_white() if is_white else self.get_black()
-        if sq > 18:
-            totalPoss = self.KNIGHT_SPAN << (sq - 18)
-        else:
-            totalPoss = self.KNIGHT_SPAN >> (18 - sq)
-        if sq % 8 < 4:
-            totalPoss &= ~self.FILE_GH & ~teammate
-        else:
-            totalPoss &= ~self.FILE_AB & ~teammate
-        totalPoss &= self.BOARD_SPAN
+        i = bitboard & ~(bitboard - 1)
+        while i != 0:
+            sq = self.lsb(i)
+            if sq > 18:
+                poss = self.KNIGHT_SPAN << (sq - 18)
+            else:
+                poss = self.KNIGHT_SPAN >> (18 - sq)
+            if sq % 8 < 4:
+                poss &= ~self.FILE_GH & ~teammate
+            else:
+                poss &= ~self.FILE_AB & ~teammate
+            poss &= self.BOARD_SPAN
+            j = poss & ~(poss - 1)
+            while j != 0:
+                end_sq = self.lsb(j)
+                moves.append(Move(sq, end_sq, Pieces.KNIGHT, 1 << end_sq & occ))
+                poss &= ~j
+                j = poss & ~(poss - 1)
+            bitboard &= ~i
+            i = bitboard & ~(bitboard - 1)
 
-        end_squares = self.get_squares(totalPoss)
-        end_squares = [square for square in end_squares]
+        return moves
 
-        return [Move(sq, end_square, Pieces.KNIGHT, 1 << end_square & occ) for end_square in end_squares]
-
-    def get_bishop_moves(self, sq: Square, is_white: bool) -> List[Move]:
+    def get_bishop_moves(self, bitboard, is_white: bool) -> List[Move]:
+        moves = []
         occ = self.get_occupied()
-        end_squares = self.get_squares(self.diag_moves(sq, is_white))
-        return [Move(sq, end_square, Pieces.BISHOP, (1 << end_square) & occ)
-                for end_square in end_squares]
+        i = bitboard & ~(bitboard - 1)
+        while i != 0:
+            sq = self.lsb(i)
+            poss = self.diag_moves(sq, is_white)
 
-    def get_rook_moves(self, sq: Square, is_white) -> List[Move]:
-        end_squares = self.get_squares(self.hv_moves(sq, is_white))
+            j = poss & ~(poss - 1)
+            while j != 0:
+                end_sq = self.lsb(j)
+                moves.append(Move(sq, end_sq, Pieces.BISHOP, 1 << end_sq & occ))
+                poss &= ~j
+                j = poss & ~(poss - 1)
+            bitboard &= ~i
+            i = bitboard & ~(bitboard - 1)
+
+        return moves
+
+    def get_rook_moves(self, bitboard, is_white) -> List[Move]:
+        moves = []
         occ = self.get_occupied()
-        return [Move(sq, end_square, Pieces.ROOK, (1 << end_square) & occ) for end_square in end_squares]
+        i = bitboard & ~(bitboard - 1)
+        while i != 0:
+            sq = self.lsb(i)
+            poss = self.hv_moves(sq, is_white)
 
-    def get_queen_moves(self, sq: Square, is_white: bool) -> List[Move]:
-        end_squares = self.get_squares(self.hv_moves(sq, is_white) | self.diag_moves(sq, is_white))
-        o = self.get_occupied()
-        return [Move(sq, end_square, Pieces.QUEEN, (1 << end_square) & o) for end_square in end_squares]
+            j = poss & ~(poss - 1)
+            while j != 0:
+                end_sq = self.lsb(j)
+                moves.append(Move(sq, end_sq, Pieces.ROOK, 1 << end_sq & occ))
+                poss &= ~j
+                j = poss & ~(poss - 1)
+            bitboard &= ~i
+            i = bitboard & ~(bitboard - 1)
 
-    def get_king_moves(self, sq: Square, is_white: bool, can_castle) -> List[Move]:
+        return moves
+
+    def get_queen_moves(self, bitboard, is_white: bool) -> List[Move]:
+        moves = []
+        occ = self.get_occupied()
+        i = bitboard & ~(bitboard - 1)
+        while i != 0:
+            sq = self.lsb(i)
+            poss = self.hv_moves(sq, is_white) | self.diag_moves(sq, is_white)
+            j = poss & ~(poss - 1)
+            while j != 0:
+                end_sq = self.lsb(j)
+                moves.append(Move(sq, end_sq, Pieces.QUEEN, 1 << end_sq & occ))
+                poss &= ~j
+                j = poss & ~(poss - 1)
+            bitboard &= ~i
+            i = bitboard & ~(bitboard - 1)
+
+        return moves
+
+    def get_king_moves(self, bitboard, is_white: bool, can_castle) -> List[Move]:
         opp = self.get_black() if is_white else self.get_white()
         teammate = self.get_white() if is_white else self.get_black()
+        sq = self.lsb(bitboard)
 
         if sq > 9:
             possibility = self.KING_SPAN << (sq - 9)
@@ -720,10 +839,10 @@ class Board:
             return True
         return False
 
-    def remove_check_moves(self, piece, position, moves, king) -> List[Move]:
+    def remove_check_moves(self, piece, moves, king) -> List[Move]:
         filtered_moves = []
-        piece.clear_square(position)
         for move in moves:
+            piece.clear_square(move.start_square)
             opponent = self.get_opponent(move.end_square, piece.is_white())
             if opponent:
                 opponent.clear_square(move.end_square)
@@ -733,7 +852,7 @@ class Board:
             piece.clear_square(move.end_square)
             if opponent:
                 opponent.occupy_square(move.end_square)
-        piece.occupy_square(position)
+            piece.occupy_square(move.start_square)
         return filtered_moves
 
     def is_check(self, king: BitBoard) -> bool:
@@ -745,36 +864,32 @@ class Board:
             return False
         for piece in self.pieces:
             if piece.is_white() == king.is_white():
-                positions = self.get_squares(piece.get_board())
-                for position in positions:
-                    moves = self.get_moves(piece, position, (False, False))
-                    piece.clear_square(position)
-                    for move in moves:
-                        opponent = self.get_opponent(move.end_square, king.is_white())
-                        if opponent:
-                            opponent.clear_square(move.end_square)
-                        piece.occupy_square(move.end_square)
-                        if not self.is_check(king):
-                            piece.clear_square(move.end_square)
-                            piece.occupy_square(position)
-                            if opponent:
-                                opponent.occupy_square(move.end_square)
-                            return False
+                moves = self.get_moves(piece, (False, False))
+                for move in moves:
+                    piece.clear_square(move.start_square)
+                    opponent = self.get_opponent(move.end_square, king.is_white())
+                    if opponent:
+                        opponent.clear_square(move.end_square)
+                    piece.occupy_square(move.end_square)
+                    if not self.is_check(king):
+                        piece.clear_square(move.end_square)
+                        piece.occupy_square(move.start_square)
                         if opponent:
                             opponent.occupy_square(move.end_square)
-                        piece.clear_square(move.end_square)
-                    piece.occupy_square(position)
+                        return False
+                    if opponent:
+                        opponent.occupy_square(move.end_square)
+                    piece.clear_square(move.end_square)
+                    piece.occupy_square(move.start_square)
         return True
 
     def is_stalemate(self, king):
         for piece in self.pieces:
             if piece.is_white() == king.is_white():
-                positions = self.get_squares(piece.get_board())
-                for position in positions:
-                    moves = self.get_moves(piece, position, (False, False))
-                    legal_moves = self.remove_check_moves(piece, position, moves, king)
-                    if len(legal_moves) != 0:
-                        return False
+                moves = self.get_moves(piece, (False, False))
+                legal_moves = self.remove_check_moves(piece, moves, king)
+                if len(legal_moves) != 0:
+                    return False
         return True
 
     def get_opponent(self, position, is_white):
@@ -790,15 +905,11 @@ class Board:
     def perft(self, depth):
         if depth == 0:
             return 1
-        moves = []
         total_count = 0
-        for piece in self.pieces:
-            if piece.is_white() == self.is_white_turn:
-                moves.extend(self.get_all_moves(piece, self.white_can_castle if self.is_white_turn
-                else self.black_can_castle))
+        moves = self.get_all_moves()
 
         for m in moves:
-            self.make_move(m)
+            self.make_move(m, True)
             wk = self.wk.get_board()
 
             bk = self.bk.get_board()
@@ -840,7 +951,8 @@ class Board:
         if opponent_piece or move.piece_type == Pieces.PAWN:
             self.half_move_count = 0
 
-        self.Hash.update_hash_after_move((move.start_square, move.end_square, piece.get_piece_type()),
+        if not isEngine:
+            self.Hash.update_hash_after_move((move.start_square, move.end_square, piece.get_piece_type()),
                                          (opponent_piece.get_piece_type() if opponent_piece else None, move.end_square))
 
         if not move.is_castle:
@@ -851,9 +963,8 @@ class Board:
         if not isEngine:
             if self.handle_game_state_endings():
                 self.gui.running = False
-
-        # Store information about the last move
-        self.last_move = move
+            # Store information about the last move
+            self.last_move = move
 
         self.is_white_turn = not self.is_white_turn
 
@@ -876,9 +987,9 @@ class Board:
         can_castle = self.white_can_castle if piece.is_white() else self.black_can_castle
 
         # Get all possible moves for the piece and remove any that result in check
-        moves = self.get_moves(piece, start_square, can_castle)
+        moves = self.get_moves(piece, can_castle)
         king = self.wk if self.is_white_turn else self.bk
-        moves = self.remove_check_moves(piece, start_square, moves, king)
+        moves = self.remove_check_moves(piece, moves, king)
 
         move = self.is_valid_move(start_square, dest_square, piece.get_piece_type(), moves)
 
