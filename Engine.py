@@ -56,17 +56,19 @@ class Engine:
                 20, 30, 10, 0, 0, 10, 30, 20]
 
     DRAW_VALUE = 0
+    CHECKMATE_VALUE = 9223372036854775807
 
     def __init__(self, board):
         self.board = board
 
     def evaluate(self):
-        if self.board.is_insufficient_material():
+        if self.board.is_insufficient_material() or \
+                self.board.is_stalemate(self.board.wk) or self.board.is_stalemate(self.board.bk):
             return self.DRAW_VALUE
         if self.board.is_checkmate(self.board.wk):
-            return -9223372036854775807
+            return -self.CHECKMATE_VALUE
         if self.board.is_checkmate(self.board.bk):
-            return 9223372036854775807
+            return self.CHECKMATE_VALUE
 
         wp = self.board.get_squares(self.board.wp.get_board())
         bp = self.board.get_squares(self.board.bp.get_board())
@@ -86,63 +88,85 @@ class Engine:
         wk = self.board.get_squares(self.board.wk.get_board())
         bk = self.board.get_squares(self.board.bk.get_board())
 
-        value = (
+        eval = (
                 self.VALUES[Pieces.PAWN] * (len(wp) - len(bp)) +
                 self.VALUES[Pieces.KNIGHT] * (len(wkn) - len(bkn)) +
                 self.VALUES[Pieces.BISHOP] * (len(wb) - len(bb)) +
                 self.VALUES[Pieces.ROOK] * (len(wr) - len(br)) +
                 self.VALUES[Pieces.QUEEN] * (len(wq) - len(bq)) +
-                sum(self.PWEIGHTS[sq] for sq in wp) - sum(self.PWEIGHTS[63 - sq] for sq in bp) +
-                sum(self.KNWEIGHTS[sq] for sq in wkn) - sum(self.KNWEIGHTS[sq] for sq in bkn) +
-                sum(self.BWEIGHTS[sq] for sq in wb) - sum(self.BWEIGHTS[sq] for sq in bb) +
-                sum(self.RWEIGHTS[sq] for sq in wr) - sum(self.RWEIGHTS[63 - sq] for sq in br) +
-                sum(self.QWEIGHTS[sq] for sq in wq) - sum(self.QWEIGHTS[63 - sq] for sq in bq) +
-                sum(self.KWEIGHTS[sq] for sq in wk) - sum(self.KWEIGHTS[63 - sq] for sq in bk)
+                sum(self.PWEIGHTS[sq] for sq in wp) + sum(-self.PWEIGHTS[63 - sq] for sq in bp) +
+                sum(self.KNWEIGHTS[sq] for sq in wkn) + sum(-self.KNWEIGHTS[sq] for sq in bkn) +
+                sum(self.BWEIGHTS[sq] for sq in wb) + sum(-self.BWEIGHTS[sq] for sq in bb) +
+                sum(self.RWEIGHTS[sq] for sq in wr) + sum(-self.RWEIGHTS[63 - sq] for sq in br) +
+                sum(self.QWEIGHTS[sq] for sq in wq) + sum(-self.QWEIGHTS[63 - sq] for sq in bq) +
+                sum(self.KWEIGHTS[sq] for sq in wk) + sum(-self.KWEIGHTS[63 - sq] for sq in bk)
 
         )
+        if self.board.is_white_turn:
+            return eval
+        else:
+            return -eval
 
-        return value
-
-    def minimax(self, depth, is_maximizing) -> Move:
-        moves = []
-        for piece in reversed(self.board.pieces):
-            if piece.is_white() == is_maximizing:
-                moves.extend(self.board.get_all_moves(piece, self.board.white_can_castle if self.board.is_white_turn
-                else self.board.black_can_castle))
-        best_move = -9999
-        final_move = None
-
-        for move in moves:
-            self.board.make_move(move, True)
-            print(self.board.last_move.end_square, self.board.last_move.start_square)
-            value = max(best_move, self.alpha_beta(depth - 1, -10000, 10000, not is_maximizing))
-            self.board.undo_move(move)
-            if value > best_move:
-                best_move = value
-                final_move = move
-        return final_move
-
-    def alpha_beta(self, depth, alpha, beta, is_maximizing) -> int:
+    def alphabeta(self, alpha, beta, depth):
+        best_score = -9999
         if depth == 0:
-            return self.evaluate()
-        moves = []
-        for piece in reversed(self.board.pieces):
-            if piece.is_white() == is_maximizing:
-                moves.extend(self.board.get_all_moves(piece, self.board.white_can_castle if self.board.is_white_turn
-                else self.board.black_can_castle))
+            return self.quiesce(alpha, beta)
 
-        bestMove = -9999 if is_maximizing else 9999
+        moves = self.board.get_all_moves()
+
         for move in moves:
+            if 1 << move.end_square == self.board.wk.get_board() or 1<<move.end_square == self.board.bk.get_board():
+                continue
             self.board.make_move(move, True)
-            if self.board.is_white_turn:
-                print(self.board.last_move.start_square, self.board.last_move.end_square)
-            minimax = self.alpha_beta(depth - 1, alpha, beta, not is_maximizing)
-            bestMove = max(bestMove, minimax) if is_maximizing else min(bestMove, minimax)
+            score = -self.alphabeta(-beta, -alpha, depth - 1)
             self.board.undo_move(move)
-            if is_maximizing:
-                alpha = max(alpha, bestMove)
-            else:
-                beta = min(beta, bestMove)
-            if beta <= alpha:
-                return bestMove
-        return bestMove
+            if score >= beta:
+                return score
+            if score > best_score:
+                best_score = score
+            if score > alpha:
+                alpha = score
+        return best_score
+
+    def quiesce(self, alpha, beta):
+        eval = self.evaluate()
+        if eval >= beta:
+            return beta
+        if alpha < eval:
+            alpha = eval
+
+        moves = self.board.get_all_moves()
+
+        for move in moves:
+            if 1 << move.end_square == self.board.wk.get_board() or 1<<move.end_square == self.board.bk.get_board():
+                continue
+            if move.is_capture:
+                self.board.make_move(move, True)
+                score = -self.quiesce(-beta, -alpha)
+                self.board.undo_move(move)
+                if score >= beta:
+                    return beta
+                if score > alpha:
+                    alpha = score
+        return alpha
+
+    def select_move(self, depth):
+        best_move = None
+        best_value = -99999
+        alpha = -100000
+        beta = 100000
+        moves = self.board.get_all_moves()
+
+        for move in moves:
+            if 1 << move.end_square == self.board.wk.get_board() or 1<<move.end_square == self.board.bk.get_board():
+                continue
+            self.board.make_move(move, True)
+            board_value = -self.alphabeta(-beta, -alpha, depth - 1)
+            if board_value > best_value:
+                best_value = board_value
+                best_move = move
+            if board_value > alpha:
+                alpha = board_value
+            self.board.undo_move(move)
+
+        return best_move
