@@ -190,6 +190,5 @@ class Engine:
 
     def polyglot_to_move(self, polyglot) -> Move:
         piece = self.board.get_piece(polyglot.from_square)
-        move = Move(polyglot.from_square, polyglot.to_square, piece.get_piece_type(),
-                    self.board.get_opponent(polyglot.to_square, piece.is_white()))
+        move = Move(polyglot.from_square, polyglot.to_square, piece.get_piece_type(), polyglot.drop is not None)
         return move

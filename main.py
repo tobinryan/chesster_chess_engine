@@ -44,7 +44,7 @@ class ChessGUI:
         running = True
         self.draw_board(None)  # Initial drawing of the chess board
         while running:
-            if self.board.is_white_turn:
+            if not self.board.is_white_turn:
                 move = chess_gui.engine.select_move(3)
                 chess_gui.board.make_move(move, False)
                 self.draw_board(None)
@@ -394,7 +394,10 @@ class ChessGUI:
         move = ""
         if self.board.last_move:
             piece = self.board.PIECE_SYMBOLS[self.board.last_move.piece_type]
-            piece = self.board.UNICODE_PIECE_SYMBOLS[piece if self.board.is_white_turn else piece.upper()]
+            was_white = not self.board.is_white_turn
+            if self.board.engine_side:
+                was_white = not was_white
+            piece = self.board.UNICODE_PIECE_SYMBOLS[piece if not was_white else piece.upper()]
             move += piece
             if self.board.last_move.is_capture and self.board.last_move.piece_type == Pieces.PAWN or \
                     self.board.last_move.en_passant:

@@ -1,3 +1,4 @@
+import random
 from typing import List
 
 import pygame
@@ -48,36 +49,50 @@ class Board:
     RANK_8 = -72057594037927936
     BOARD_SPAN = 0xFFFFFFFFFFFFFFFF
 
-    # Instantiating bitBoards for each color/type of material
-    wp = BitBoard(0b11111111 << 8, pygame.image.load('images/wp.png'), True, Pieces.PAWN)  # White Pawn
-    bp = BitBoard(0b11111111 << 48, pygame.image.load('images/bp.png'), False, Pieces.PAWN)  # Black Pawn
-    wr = BitBoard(0b10000001, pygame.image.load('images/wr.png'), True, Pieces.ROOK)  # White Rook
-    br = BitBoard(0b10000001 << 56, pygame.image.load('images/br.png'), False, Pieces.ROOK)  # Black Rook
-    wkn = BitBoard(0b01000010, pygame.image.load('images/wkn.png'), True, Pieces.KNIGHT)  # White Knight
-    bkn = BitBoard(0b01000010 << 56, pygame.image.load('images/bkn.png'), False, Pieces.KNIGHT)  # Black Knight
-    wb = BitBoard(0b00100100, pygame.image.load('images/wb.png'), True, Pieces.BISHOP)  # White Bishop
-    bb = BitBoard(0b00100100 << 56, pygame.image.load('images/bb.png'), False, Pieces.BISHOP)  # Black Bishop
-    wq = BitBoard(0b00001000, pygame.image.load('images/wq.png'), True, Pieces.QUEEN)  # White Queen
-    bq = BitBoard(0b00001000 << 56, pygame.image.load('images/bq.png'), False, Pieces.QUEEN)  # Black Queen
-    wk = BitBoard(0b00010000, pygame.image.load('images/wk.png'), True, Pieces.KING)  # White King
-    bk = BitBoard(0b00010000 << 56, pygame.image.load('images/bk.png'), False, Pieces.KING)  # Black King
-    pieces = [wp, bp, wr, br, wkn, bkn, wb, bb, wq, bq, wk, bk]
-
     def __init__(self, gui):
         self.selected: (BitBoard, int) = None  # Tuple (selected_bitboard, position)
-        self.is_white_turn = True
+        self.engine_side = bool(random.getrandbits(1))
+        self.is_white_turn = not self.engine_side
         self.last_move = None
         self.half_move_count = 0
         self.white_can_castle = (True, True)  # Tuple (short_castle, long_castle)
         self.black_can_castle = (True, True)  # Tuple (short_castle, long_castle)
         self.last_castle_state = (True, True)
-        self.Hash = Hashing(self.pieces)
         self.RANK_NAMES = ["1", "2", "3", "4", "5", "6", "7", "8"]
         self.FILE_NAMES = ["a", "b", "c", "d", "e", "f", "g", "h"]
         self.SQUARE_NAMES = [f + r for r in self.RANK_NAMES for f in self.FILE_NAMES]
         self.PIECE_SYMBOLS = {Pieces.PAWN: "p", Pieces.KNIGHT: "n", Pieces.BISHOP: "b",
                               Pieces.ROOK: "r", Pieces.QUEEN: "q", Pieces.KING: "k"}
         self.gui = gui
+
+        # Instantiating bitBoards for each color/type of material
+        self.wp = BitBoard(0b11111111 << 8, pygame.image.load('images/wp.png' if not self.engine_side else
+                                                              'images/bp.png'), True, Pieces.PAWN)  # White Pawn
+        self.bp = BitBoard(0b11111111 << 48, pygame.image.load('images/bp.png' if not self.engine_side else
+                                                               'images/wp.png'), False, Pieces.PAWN)  # Black Pawn
+        self.wr = BitBoard(0b10000001, pygame.image.load('images/wr.png' if not self.engine_side else
+                                                         'images/br.png'), True, Pieces.ROOK)  # White Rook
+        self.br = BitBoard(0b10000001 << 56, pygame.image.load('images/br.png' if not self.engine_side else
+                                                               'images/wr.png'), False, Pieces.ROOK)  # Black Rook
+        self.wkn = BitBoard(0b01000010, pygame.image.load('images/wkn.png' if not self.engine_side else
+                                                          'images/bkn.png'), True, Pieces.KNIGHT)  # White Knight
+        self.bkn = BitBoard(0b01000010 << 56, pygame.image.load('images/bkn.png' if not self.engine_side else
+                                                                'images/wkn.png'), False, Pieces.KNIGHT)  # Black Knight
+        self.wb = BitBoard(0b00100100, pygame.image.load('images/wb.png' if not self.engine_side else
+                                                         'images/bb.png'), True, Pieces.BISHOP)  # White Bishop
+        self.bb = BitBoard(0b00100100 << 56, pygame.image.load('images/bb.png' if not self.engine_side else
+                                                               'images/wb.png'), False, Pieces.BISHOP)  # Black Bishop
+        self.wq = BitBoard(0b00001000, pygame.image.load('images/wq.png' if not self.engine_side else
+                                                         'images/bq.png'), True, Pieces.QUEEN)  # White Queen
+        self.bq = BitBoard(0b00001000 << 56, pygame.image.load('images/bq.png' if not self.engine_side else
+                                                               'images/wq.png'), False, Pieces.QUEEN)  # Black Queen
+        self.wk = BitBoard(0b00010000, pygame.image.load('images/wk.png' if not self.engine_side else
+                                                         'images/bk.png'), True, Pieces.KING)  # White King
+        self.bk = BitBoard(0b00010000 << 56, pygame.image.load('images/bk.png' if not self.engine_side else
+                                                               'images/wk.png'), False, Pieces.KING)  # Black King
+        self.pieces = [self.wp, self.bp, self.wr, self.br, self.wkn, self.bkn,
+                       self.wb, self.bb, self.wq, self.bq, self.wk, self.bk]
+        self.Hash = Hashing(self.pieces)
 
     @staticmethod
     def get_rank(sq: Square):
@@ -416,13 +431,13 @@ class Board:
                 ):
 
                     poss = (bitboard >> 1) & self.bp.get_board() & self.RANK_5 \
-                                  & ~self.FILE_H & self.FILE_MASKS[e_file]
+                           & ~self.FILE_H & self.FILE_MASKS[e_file]
                     if poss:
                         sq = poss.bit_length()
                         moves.append(Move(sq, sq + 7, Pieces.PAWN, en_passant=True))
 
                     poss = (bitboard << 1) & self.bp.get_board() & self.RANK_5 \
-                                  & ~self.FILE_A & self.FILE_MASKS[e_file]
+                           & ~self.FILE_A & self.FILE_MASKS[e_file]
                     if poss:
                         sq = poss.bit_length() - 2
                         moves.append(Move(sq, sq + 9, Pieces.PAWN, en_passant=True))
@@ -493,13 +508,13 @@ class Board:
                 ):
 
                     poss = (bitboard << 1) & self.wp.get_board() & self.RANK_4 \
-                                  & ~self.FILE_A & self.FILE_MASKS[e_file]
+                           & ~self.FILE_A & self.FILE_MASKS[e_file]
                     if poss:
                         sq = poss.bit_length() - 2
                         moves.append(Move(sq, sq - 7, Pieces.PAWN, en_passant=True))
 
                     poss = (bitboard >> 1) & self.wp.get_board() & self.RANK_4 \
-                                  & ~self.FILE_H & self.FILE_MASKS[e_file]
+                           & ~self.FILE_H & self.FILE_MASKS[e_file]
                     if poss:
                         sq = poss.bit_length()
                         moves.append(Move(sq, sq - 9, Pieces.PAWN, en_passant=True))
@@ -954,7 +969,8 @@ class Board:
 
         if not isEngine:
             self.Hash.update_hash_after_move((move.start_square, move.end_square, piece.get_piece_type()),
-                                         (opponent_piece.get_piece_type() if opponent_piece else None, move.end_square))
+                                             (opponent_piece.get_piece_type() if opponent_piece else None,
+                                              move.end_square))
 
         if not move.is_castle:
             piece.clear_square(move.start_square)
