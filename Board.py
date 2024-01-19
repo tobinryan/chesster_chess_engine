@@ -1,4 +1,3 @@
-import sys
 from typing import List
 
 import pygame
@@ -71,7 +70,7 @@ class Board:
         self.half_move_count = 0
         self.white_can_castle = (True, True)  # Tuple (short_castle, long_castle)
         self.black_can_castle = (True, True)  # Tuple (short_castle, long_castle)
-        self.last_castle_state = None
+        self.last_castle_state = (True, True)
         self.Hash = Hashing(self.pieces)
         self.RANK_NAMES = ["1", "2", "3", "4", "5", "6", "7", "8"]
         self.FILE_NAMES = ["a", "b", "c", "d", "e", "f", "g", "h"]
@@ -204,7 +203,7 @@ class Board:
         if piece:
             piece.clear_square(sq)
 
-    def handle_en_passant(self, dest_square, is_white):
+    def handle_en_passant(self, move: Move, is_white):
         """
         Handles en passant captures.
 
@@ -219,9 +218,10 @@ class Board:
         direction = -1 if is_white else 1
 
         # Find and clear the square of the captured opponent's pawn
-        opponent_position = dest_square + 8 * direction
+        opponent_position = move.end_square + 8 * direction
         opponent_piece = self.get_opponent(opponent_position, is_white)
         if opponent_piece:
+            move.captured = opponent_piece
             opponent_piece.clear_square(opponent_position)
         else:
             raise Exception("Completed en passant move but couldn't find opponent piece.")
@@ -839,9 +839,10 @@ class Board:
             return True
         return False
 
-    def remove_check_moves(self, piece, moves, king) -> List[Move]:
+    def remove_check_moves(self, moves, king) -> List[Move]:
         filtered_moves = []
         for move in moves:
+            piece = self.get_bb(move.piece_type, king.is_white())
             piece.clear_square(move.start_square)
             opponent = self.get_opponent(move.end_square, piece.is_white())
             if opponent:
@@ -887,16 +888,16 @@ class Board:
         for piece in self.pieces:
             if piece.is_white() == king.is_white():
                 moves = self.get_moves(piece, (False, False))
-                legal_moves = self.remove_check_moves(piece, moves, king)
+                legal_moves = self.remove_check_moves(moves, king)
                 if len(legal_moves) != 0:
                     return False
         return True
 
-    def get_opponent(self, position, is_white):
-        if not self.is_valid_square(position):
+    def get_opponent(self, sq: Square, is_white):
+        if not self.is_valid_square(sq):
             return None
         for piece in self.pieces:
-            if piece and piece.is_occupied(position) and not is_white == piece.is_white():
+            if piece and piece.is_occupied(sq) and not is_white == piece.is_white():
                 return piece
         return None
 
@@ -933,7 +934,7 @@ class Board:
             self.handle_opponent_piece(opponent_piece, move.end_square)
             move.captured = opponent_piece
         if move.en_passant:
-            self.handle_en_passant(move.end_square, piece.is_white())
+            self.handle_en_passant(move, piece.is_white())
         if move.is_castle:
             self.last_castle_state = self.white_can_castle if piece.is_white() else self.black_can_castle
             self.handle_castling(move.start_square, move.end_square, piece.is_white())
@@ -960,13 +961,13 @@ class Board:
         if not move.is_castle and not move.is_promotion:
             piece.occupy_square(move.end_square)
 
+        self.is_white_turn = not self.is_white_turn
+
         if not isEngine:
             if self.handle_game_state_endings():
                 self.gui.running = False
             # Store information about the last move
             self.last_move = move
-
-        self.is_white_turn = not self.is_white_turn
 
     def move(self, piece_to_move: (BitBoard, Square), dest_square: Square) -> bool:
         """
@@ -989,7 +990,7 @@ class Board:
         # Get all possible moves for the piece and remove any that result in check
         moves = self.get_moves(piece, can_castle)
         king = self.wk if self.is_white_turn else self.bk
-        moves = self.remove_check_moves(piece, moves, king)
+        moves = self.remove_check_moves(moves, king)
 
         move = self.is_valid_move(start_square, dest_square, piece.get_piece_type(), moves)
 
@@ -1017,12 +1018,12 @@ class Board:
                 piece.clear_square(move.end_square)
         if move.is_castle:
             self.undo_castling(move.start_square, move.end_square, piece.is_white())
-            if self.is_white_turn:
-                self.white_can_castle = self.last_castle_state
-            else:
-                self.black_can_castle = self.last_castle_state
+        if self.is_white_turn:
+            self.white_can_castle = self.last_castle_state
+        else:
+            self.black_can_castle = self.last_castle_state
         if move.en_passant:
-            self.undo_en_passant(move.end_square, piece.is_white())
+            self.undo_en_passant(move, piece.is_white())
         if move.is_capture:
             opponent_piece.occupy_square(move.end_square)
 
@@ -1045,34 +1046,88 @@ class Board:
 
         rook.occupy_square(end_square)
 
-    def undo_en_passant(self, end_square: Square, is_white: bool):
-        pass
+    def undo_en_passant(self, move: Move, is_white: bool):
+        direction = -1 if is_white else 1
+        opponent_sq = move.end_square + 8 * direction
+        move.captured.occupy_square(opponent_sq)
 
-    @staticmethod
-    def find_differences(str1, str2):  # TODO WILL REMOVE AFTER DEBUGGING MOVEMENT
-        # Split the input strings into individual pairs
-        pairs1 = [pair.strip() for pair in str1.split('\n')]
-        pairs2 = [pair.strip() for pair in str2.split('\n')]
+    def export_fen(self):
+        fen = ""
+        empty_squares = 0
 
-        # Create dictionaries to store the counts for each pair
-        counts1 = {pair.split(':')[0]: int(pair.split(':')[1]) for pair in pairs1}
-        counts2 = {pair.split(':')[0]: int(pair.split(':')[1]) for pair in pairs2}
+        for rank in range(7, -1, -1):
+            for file in range(0, 8):
+                square_idx = 8 * rank + file
+                piece = self.get_piece(square_idx)
 
-        # Find the keys that are present in one dictionary but not in the other
-        keys_only_in_1 = set(counts1.keys()) - set(counts2.keys())
-        keys_only_in_2 = set(counts2.keys()) - set(counts1.keys())
+                if piece is None:
+                    empty_squares += 1
+                else:
+                    if empty_squares > 0:
+                        fen += str(empty_squares)
+                        empty_squares = 0
 
-        # Find the keys that are present in both dictionaries but with different values
-        different_values = [key for key in set(counts1.keys()) & set(counts2.keys()) if counts1[key] != counts2[key]]
+                    match piece.get_piece_type():
+                        case Pieces.PAWN:
+                            if piece.is_white():
+                                fen += 'P'
+                            else:
+                                fen += 'p'
+                        case Pieces.KNIGHT:
+                            if piece.is_white():
+                                fen += 'N'
+                            else:
+                                fen += 'n'
+                        case Pieces.ROOK:
+                            if piece.is_white():
+                                fen += 'R'
+                            else:
+                                fen += 'r'
+                        case Pieces.BISHOP:
+                            if piece.is_white():
+                                fen += 'B'
+                            else:
+                                fen += 'b'
+                        case Pieces.QUEEN:
+                            if piece.is_white():
+                                fen += 'Q'
+                            else:
+                                fen += 'q'
+                        case Pieces.KING:
+                            if piece.is_white():
+                                fen += 'K'
+                            else:
+                                fen += 'k'
 
-        # Combine all the differences into a single list
-        differences = {
-            'keys_only_in_1': sorted(list(keys_only_in_1)),
-            'keys_only_in_2': sorted(list(keys_only_in_2)),
-            'different_values': sorted(different_values)
-        }
-        print("keys_only_in_1", (x for x in sorted(list(keys_only_in_1))))
-        print("keys_only_in_2", (x for x in sorted(list(keys_only_in_2))))
-        print(list(keys_only_in_2))
+            if empty_squares > 0:
+                fen += str(empty_squares)
+                empty_squares = 0
 
-        return differences
+            if rank > 0:
+                fen += '/'
+
+        fen += ' '
+        fen += 'w' if self.is_white_turn else 'b'
+        fen += ' '
+
+        if self.white_can_castle[0]:
+            fen += 'K'
+        if self.white_can_castle[1]:
+            fen += 'Q'
+        if self.black_can_castle[0]:
+            fen += 'k'
+        if self.black_can_castle[1]:
+            fen += 'q'
+
+        fen += ' '
+        fen += '-'
+
+        return fen
+
+    def get_piece(self, square: Square):
+        if not self.is_valid_square(square):
+            return None
+        for piece in self.pieces:
+            if piece and piece.is_occupied(square):
+                return piece
+        return None

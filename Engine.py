@@ -1,3 +1,6 @@
+import chess as chess
+import chess.polyglot
+
 from Pieces import Pieces
 from Move import Move
 
@@ -57,13 +60,17 @@ class Engine:
 
     DRAW_VALUE = 0
     CHECKMATE_VALUE = 9223372036854775807
+    CHECK_VALUE = 150
 
     def __init__(self, board):
         self.board = board
 
     def evaluate(self):
-        if self.board.is_insufficient_material() or \
-                self.board.is_stalemate(self.board.wk) or self.board.is_stalemate(self.board.bk):
+        if self.board.is_insufficient_material():
+            return self.DRAW_VALUE
+        if self.board.is_white_turn and self.board.is_stalemate(self.board.wk):
+            return self.DRAW_VALUE
+        if not self.board.is_white_turn and self.board.is_stalemate(self.board.bk):
             return self.DRAW_VALUE
         if self.board.is_checkmate(self.board.wk):
             return -self.CHECKMATE_VALUE
@@ -99,7 +106,9 @@ class Engine:
                 sum(self.BWEIGHTS[sq] for sq in wb) + sum(-self.BWEIGHTS[sq] for sq in bb) +
                 sum(self.RWEIGHTS[sq] for sq in wr) + sum(-self.RWEIGHTS[63 - sq] for sq in br) +
                 sum(self.QWEIGHTS[sq] for sq in wq) + sum(-self.QWEIGHTS[63 - sq] for sq in bq) +
-                sum(self.KWEIGHTS[sq] for sq in wk) + sum(-self.KWEIGHTS[63 - sq] for sq in bk)
+                sum(self.KWEIGHTS[sq] for sq in wk) + sum(-self.KWEIGHTS[63 - sq] for sq in bk) +
+                self.CHECK_VALUE * self.board.is_check(self.board.wk) -
+                self.CHECK_VALUE * self.board.is_check(self.board.bk)
 
         )
         if self.board.is_white_turn:
@@ -113,9 +122,10 @@ class Engine:
             return self.quiesce(alpha, beta)
 
         moves = self.board.get_all_moves()
+        moves = self.board.remove_check_moves(moves, self.board.wk if self.board.is_white_turn else self.board.bk)
 
         for move in moves:
-            if 1 << move.end_square == self.board.wk.get_board() or 1<<move.end_square == self.board.bk.get_board():
+            if 1 << move.end_square == self.board.wk.get_board() or 1 << move.end_square == self.board.bk.get_board():
                 continue
             self.board.make_move(move, True)
             score = -self.alphabeta(-beta, -alpha, depth - 1)
@@ -136,9 +146,10 @@ class Engine:
             alpha = eval
 
         moves = self.board.get_all_moves()
+        moves = self.board.remove_check_moves(moves, self.board.wk if self.board.is_white_turn else self.board.bk)
 
         for move in moves:
-            if 1 << move.end_square == self.board.wk.get_board() or 1<<move.end_square == self.board.bk.get_board():
+            if 1 << move.end_square == self.board.wk.get_board() or 1 << move.end_square == self.board.bk.get_board():
                 continue
             if move.is_capture:
                 self.board.make_move(move, True)
@@ -151,22 +162,34 @@ class Engine:
         return alpha
 
     def select_move(self, depth):
-        best_move = None
-        best_value = -99999
-        alpha = -100000
-        beta = 100000
-        moves = self.board.get_all_moves()
+        try:
+            board_rep = chess.Board(self.board.export_fen())
+            polyglot_move = chess.polyglot.MemoryMappedReader("Titans.bin").weighted_choice(board_rep).move
+            return self.polyglot_to_move(polyglot_move)
+        except:
+            best_move = None
+            best_value = -99999
+            alpha = -100000
+            beta = 100000
+            moves = self.board.get_all_moves()
+            moves = self.board.remove_check_moves(moves, self.board.wk if self.board.is_white_turn else self.board.bk)
 
-        for move in moves:
-            if 1 << move.end_square == self.board.wk.get_board() or 1<<move.end_square == self.board.bk.get_board():
-                continue
-            self.board.make_move(move, True)
-            board_value = -self.alphabeta(-beta, -alpha, depth - 1)
-            if board_value > best_value:
-                best_value = board_value
-                best_move = move
-            if board_value > alpha:
-                alpha = board_value
-            self.board.undo_move(move)
+            for move in moves:
+                if 1 << move.end_square == self.board.wk.get_board() or 1 << move.end_square == self.board.bk.get_board():
+                    continue
+                self.board.make_move(move, True)
+                board_value = -self.alphabeta(-beta, -alpha, depth - 1)
+                if board_value > best_value:
+                    best_value = board_value
+                    best_move = move
+                if board_value > alpha:
+                    alpha = board_value
+                self.board.undo_move(move)
 
-        return best_move
+            return best_move
+
+    def polyglot_to_move(self, polyglot) -> Move:
+        piece = self.board.get_piece(polyglot.from_square)
+        move = Move(polyglot.from_square, polyglot.to_square, piece.get_piece_type(),
+                    self.board.get_opponent(polyglot.to_square, piece.is_white()))
+        return move

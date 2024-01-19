@@ -45,9 +45,11 @@ class ChessGUI:
         self.draw_board(None)  # Initial drawing of the chess board
         while running:
             if self.board.is_white_turn:
-                m = chess_gui.engine.select_move(3)
-                chess_gui.board.make_move(m, False)
+                move = chess_gui.engine.select_move(3)
+                chess_gui.board.make_move(move, False)
                 self.draw_board(None)
+                print(self.move_notation())
+                # print(self.export_fen())
             self.clock.tick(self.FPS)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -64,7 +66,6 @@ class ChessGUI:
             pygame.display.flip()
 
         self.draw_board(None)
-
 
     def draw_highlighted_piece(self):
         """
@@ -206,7 +207,7 @@ class ChessGUI:
                 0].is_white() else self.board.black_can_castle
             king = self.board.wk if self.board.is_white_turn else self.board.bk
             moves = self.board.get_moves(self.board.selected[0], (short_castle, long_castle))
-            moves = self.board.remove_check_moves(self.board.selected[0], moves, king)
+            moves = self.board.remove_check_moves(moves, king)
             self.draw_board(moves)
 
     def handle_second_click(self, clicked_piece: BitBoard, clicked_square: Square):
@@ -234,7 +235,7 @@ class ChessGUI:
             can_castle = self.board.white_can_castle if clicked_piece.is_white() else self.board.black_can_castle
             king = self.board.wk if self.board.is_white_turn else self.board.bk
             moves = self.board.get_moves(clicked_piece, can_castle)
-            moves = self.board.remove_check_moves(clicked_piece, moves, king)
+            moves = self.board.remove_check_moves(moves, king)
         else:
             # If the same piece is clicked a second time, unhighlight the piece and moves
             self.board.selected = None
@@ -296,7 +297,6 @@ class ChessGUI:
                         return
 
             promotion_popup.draw()
-            pygame.display.flip()
 
     def import_fen(self, fen: str):
         for piece in self.board.pieces:
@@ -418,5 +418,4 @@ class ChessGUI:
 
 if __name__ == "__main__":
     chess_gui = ChessGUI()
-    # chess_gui.import_fen("4k3/8/8/8/1Q4R1/8/8/3K4 b - - 0 1")
     chess_gui.run()
