@@ -762,10 +762,16 @@ class Board:
         # Check for checkmate and exit the game if found
 
         if self.is_checkmate(self.wk):
-            print("Black won!")
+            if self.engine_side:
+                print("White won!")
+            else:
+                print("Black won!")
             return True
         elif self.is_checkmate(self.bk):
-            print("White won!")
+            if self.engine_side:
+                print("Black won!")
+            else:
+                print("White won!")
             return True
 
         # Check for stalemate and exit the game if found
