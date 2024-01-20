@@ -117,12 +117,13 @@ class Engine:
             return -eval
 
     def alphabeta(self, alpha, beta, depth):
-        best_score = -9999
+        best_score = -float('inf')
         if depth == 0:
             return self.quiesce(alpha, beta)
 
         moves = self.board.get_all_moves()
         moves = self.board.remove_check_moves(moves, self.board.wk if self.board.is_white_turn else self.board.bk)
+        moves = sorted(reversed(moves), key=Move.move_sort_key)
 
         for move in moves:
             if 1 << move.end_square == self.board.wk.get_board() or 1 << move.end_square == self.board.bk.get_board():
@@ -147,6 +148,7 @@ class Engine:
 
         moves = self.board.get_all_moves()
         moves = self.board.remove_check_moves(moves, self.board.wk if self.board.is_white_turn else self.board.bk)
+        moves = sorted(reversed(moves), key=Move.move_sort_key)
 
         for move in moves:
             if 1 << move.end_square == self.board.wk.get_board() or 1 << move.end_square == self.board.bk.get_board():
@@ -163,7 +165,10 @@ class Engine:
 
     def select_move(self, depth):
         try:
-            board_rep = chess.Board(self.board.export_fen())
+            fen = self.board.export_fen()
+            if self.board.engine_side:
+                fen = self.board.flip_fen(fen)
+            board_rep = chess.Board(fen)
             polyglot_move = chess.polyglot.MemoryMappedReader("Titans.bin").weighted_choice(board_rep).move
             return self.polyglot_to_move(polyglot_move)
         except:
@@ -173,6 +178,7 @@ class Engine:
             beta = 100000
             moves = self.board.get_all_moves()
             moves = self.board.remove_check_moves(moves, self.board.wk if self.board.is_white_turn else self.board.bk)
+            moves = sorted(reversed(moves), key=Move.move_sort_key)
 
             for move in moves:
                 if 1 << move.end_square == self.board.wk.get_board() or 1 << move.end_square == self.board.bk.get_board():
@@ -190,5 +196,9 @@ class Engine:
 
     def polyglot_to_move(self, polyglot) -> Move:
         piece = self.board.get_piece(polyglot.from_square)
-        move = Move(polyglot.from_square, polyglot.to_square, piece.get_piece_type(), polyglot.drop is not None)
+        move = Move(polyglot.from_square, polyglot.to_square, piece.get_piece_type(),
+                    self.board.get_occupied() & 1 << polyglot.to_square)
+        if self.board.engine_side:
+            move.flip()
         return move
+

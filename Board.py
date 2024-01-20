@@ -1092,34 +1092,34 @@ class Board:
                     match piece.get_piece_type():
                         case Pieces.PAWN:
                             if piece.is_white():
-                                fen += 'P'
+                                fen += 'P' if not self.engine_side else 'p'
                             else:
-                                fen += 'p'
+                                fen += 'p' if not self.engine_side else 'P'
                         case Pieces.KNIGHT:
                             if piece.is_white():
-                                fen += 'N'
+                                fen += 'N' if not self.engine_side else 'n'
                             else:
-                                fen += 'n'
+                                fen += 'n' if not self.engine_side else 'N'
                         case Pieces.ROOK:
                             if piece.is_white():
-                                fen += 'R'
+                                fen += 'R' if not self.engine_side else 'r'
                             else:
-                                fen += 'r'
+                                fen += 'r' if not self.engine_side else 'R'
                         case Pieces.BISHOP:
                             if piece.is_white():
-                                fen += 'B'
+                                fen += 'B' if not self.engine_side else 'b'
                             else:
-                                fen += 'b'
+                                fen += 'b' if not self.engine_side else 'B'
                         case Pieces.QUEEN:
                             if piece.is_white():
-                                fen += 'Q'
+                                fen += 'Q' if not self.engine_side else 'q'
                             else:
-                                fen += 'q'
+                                fen += 'q' if not self.engine_side else 'Q'
                         case Pieces.KING:
                             if piece.is_white():
-                                fen += 'K'
+                                fen += 'K' if not self.engine_side else 'k'
                             else:
-                                fen += 'k'
+                                fen += 'k' if not self.engine_side else 'K'
 
             if empty_squares > 0:
                 fen += str(empty_squares)
@@ -1129,7 +1129,7 @@ class Board:
                 fen += '/'
 
         fen += ' '
-        fen += 'w' if self.is_white_turn else 'b'
+        fen += 'w' if self.engine_side else 'b'
         fen += ' '
 
         if self.white_can_castle[0]:
@@ -1145,6 +1145,26 @@ class Board:
         fen += '-'
 
         return fen
+
+    @staticmethod
+    def flip_fen(fen):
+        # Split the FEN string into its individual components
+        parts = fen.split()
+
+        # Reverse the order of the board configuration part (the first part)
+        board_config = parts[0]
+        reversed_board = '/'.join(reversed(board_config.split('/')))
+
+        # Change the turn indicator from 'w' to 'b'
+        if parts[1] == 'w':
+            new_turn = 'w'
+        else:
+            new_turn = 'b'
+
+        # Combine the modified components back into a new FEN string
+        new_fen = ' '.join([reversed_board, new_turn] + parts[2:])
+
+        return new_fen
 
     def get_piece(self, square: Square):
         if not self.is_valid_square(square):

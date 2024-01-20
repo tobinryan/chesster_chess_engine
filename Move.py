@@ -18,3 +18,17 @@ class Move:
             return (self.start_square == other.start_square and
                     self.end_square == other.end_square)
         return False
+
+    def move_sort_key(self):
+        if self.is_castle:
+            return 1
+        if self.is_promotion:
+            return 2
+        if self.is_castle:
+            return 3
+        return 4
+
+    def flip(self):
+        # Calculate the flipped move
+        self.start_square = 63 - self.start_square
+        self.end_square = 63 - self.end_square
