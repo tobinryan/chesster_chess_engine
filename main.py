@@ -49,7 +49,6 @@ class ChessGUI:
                 chess_gui.board.make_move(move, False)
                 self.draw_board(None)
                 print(self.move_notation())
-                # print(self.export_fen())
             self.clock.tick(self.FPS)
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:

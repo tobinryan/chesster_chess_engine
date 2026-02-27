@@ -2,6 +2,7 @@ class BitBoard:
     """
     Represents a bitboard for a type of chess piece (e.g., white pawns, black bishops).
     """
+    __slots__ = ('_board', '_icon', '_is_white', '_piece_type')
 
     def __init__(self, binary_num, icon, is_white, piece_type):
         """

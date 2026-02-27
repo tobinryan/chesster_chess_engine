@@ -951,13 +951,17 @@ class Board:
         piece.clear_square(move.start_square)
         opponent_piece = self.get_opponent(move.end_square, piece.is_white())
 
+        # Save state for undo
+        move.prev_white_castle = self.white_can_castle
+        move.prev_black_castle = self.black_can_castle
+        move.prev_last_move = self.last_move
+
         if move.is_capture:
             self.handle_opponent_piece(opponent_piece, move.end_square)
             move.captured = opponent_piece
         if move.en_passant:
             self.handle_en_passant(move, piece.is_white())
         if move.is_castle:
-            self.last_castle_state = self.white_can_castle if piece.is_white() else self.black_can_castle
             self.handle_castling(move.start_square, move.end_square, piece.is_white())
         if move.is_promotion:
             if isEngine:
@@ -983,13 +987,12 @@ class Board:
         if not move.is_castle and not move.is_promotion:
             piece.occupy_square(move.end_square)
 
+        self.last_move = move
         self.is_white_turn = not self.is_white_turn
 
         if not isEngine:
             if self.handle_game_state_endings():
                 self.gui.running = False
-            # Store information about the last move
-            self.last_move = move
 
     def move(self, piece_to_move: (BitBoard, Square), dest_square: Square) -> bool:
         """
@@ -1040,10 +1043,9 @@ class Board:
                 piece.clear_square(move.end_square)
         if move.is_castle:
             self.undo_castling(move.start_square, move.end_square, piece.is_white())
-        if self.is_white_turn:
-            self.white_can_castle = self.last_castle_state
-        else:
-            self.black_can_castle = self.last_castle_state
+        self.white_can_castle = move.prev_white_castle
+        self.black_can_castle = move.prev_black_castle
+        self.last_move = move.prev_last_move
         if move.en_passant:
             self.undo_en_passant(move, piece.is_white())
         if move.is_capture:
